@@ -9,7 +9,7 @@ const dbConfig = {
   host: 'localhost',
   user: 'root',
   password: 'Alireza1995!',
-  database: 'authentication'
+  database: 'battle-of-eternals'
 };
 
 const pool = mysql.createPool(dbConfig);
@@ -43,7 +43,7 @@ app.post('/login', (req, res) => {
   });
 });
 
-const port = process.env.PORT || 3000;
+const port = 3000;
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
