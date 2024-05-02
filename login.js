@@ -1,31 +1,49 @@
 const express = require('express');
-const mysql = require('mysql2/promise');
 const router = express.Router();
+const bcrypt = require('bcrypt');
+const mysql = require('mysql2/promise');
 
-// MySQL connection configuration
-const dbConfig = {
+
+const pool = mysql.createPool({
     host: 'localhost',
     user: 'root',
     password: 'Alireza1995!',
-    database: 'battle-of-eternals'
-  };
+    database: 'battle-of-eternals',
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
+});
 
-const pool = mysql.createPool(dbConfig);
 
-router.post('/', (req, res) => {
-    const { username, password } = req.body;
-  
-    pool.query('SELECT * FROM users WHERE username = ? AND password = ?', [username, password], (err, results) => {
-      if (err) {
-        console.error('Error logging in user:', err);
-        return res.status(500).json({ error: 'An error occurred while logging in user' });
-      }
-      if (results.length === 0) {
-        return res.status(401).json({ error: 'Invalid username or password' });
-      }
-      console.log('User logged in successfully:', results[0]);
-      res.json({ message: 'User logged in successfully', user: results[0] });
-    });
-  });
+router.post('/', async (req, res) => {
+    const { email, password } = req.body;
 
-  module.exports = router;
+    try {
+        // Check if the user exists in the database
+        const [existingUser] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
+
+        if (existingUser.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        // Check if the provided password matches the stored hashed password
+        const isPasswordValid = await bcrypt.compare(password, existingUser[0].password_hash);
+
+        if (!isPasswordValid) {
+            return res.status(401).json({ error: 'Incorrect password' });
+        }
+
+        const user = {
+            username: existingUser[0].username,
+            password: password,
+        };
+
+        res.status(200).json({ message: 'Login successful', user });
+    } catch (error) {
+        console.error('Error logging in:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+
+module.exports = router;
