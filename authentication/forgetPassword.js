@@ -21,7 +21,7 @@ router.get('/', (req, res) => {
     const token = req.body.token; 
 
     transporter.sendMail({
-        from: '"Manataz Studio 👻" <Manatazstudio@gmail.com>', 
+        from: '"Manataz Studio " <Manatazstudio@gmail.com>', 
         to: userEmail, 
         subject: "Forget Password", 
         text: "Code for reset password: " + token,
