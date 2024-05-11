@@ -34,8 +34,12 @@ router.post('/', async (req, res) => {
         }
 
         const user = {
+            playerToken: existingUser[0].playerToken,
             username: existingUser[0].username,
-            password: password,
+            wheat: existingUser[0].wheat,
+            stone: existingUser[0].stone,
+            wood: existingUser[0].wood,
+            iron: existingUser[0].iron
         };
 
         res.status(200).json({ message: 'Login successful', user });

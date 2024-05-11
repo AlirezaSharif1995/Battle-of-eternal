@@ -15,8 +15,8 @@ const pool = mysql.createPool({
 });
 
 router.post('/', async (req, res) => {
-    const { email, password } = req.body;
-    console.log(email+password)
+    const { email, password, username } = req.body;
+    console.log(email + password + username);
 
     if (!isValidEmail(email)) {
         return res.status(400).json({ error: 'Invalid email format' });
@@ -38,31 +38,25 @@ router.post('/', async (req, res) => {
         // Hash the password
         const hashedPassword = await bcrypt.hash(password, 10);
 
+        const token = generateRandomToken();
         // Insert new user into the database
-        await pool.query('INSERT INTO users (email, password_hash) VALUES (?, ?)', [email, hashedPassword]);
+        await pool.query('INSERT INTO users (playerToken, email, password_hash, username) VALUES (?, ?, ?, ?)', [token, email, hashedPassword, username]);
+        await pool.query('INSERT INTO userbuildings (playerToken) VALUES (?)', [token]);
 
-        res.status(201).json({ message: 'User registered successfully' });
+        res.status(201).json({ message: 'User registered successfully', playerToken: token });
     } catch (error) {
         console.error('Error registering user:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
 
-
-router.post('/enter-username', async (req, res) => {
-    const { email, username } = req.body;
-
-    try {
-        // Update user document with the username
-        await pool.query('UPDATE users SET username = ? WHERE email = ?', [username, email]);
-        
-        // If you want to send a response back to the client, you can do it here
-        res.send('Username saved successfully!');
-    } catch (error) {
-        console.error('Error saving username:', error);
-        res.status(500).json({ error: 'Error saving username' });
+function generateRandomToken() {
+    let token = '';
+    for (let i = 0; i < 5; i++) {
+        token += Math.floor(Math.random() * 10); // Generate random digit (0-9)
     }
-});
+    return token;
+}
 
 
 function isValidEmail(email) {
