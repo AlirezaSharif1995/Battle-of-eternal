@@ -36,6 +36,8 @@ router.post('/', async (req, res) => {
         const user = {
             playerToken: existingUser[0].playerToken,
             username: existingUser[0].username,
+            avatarCode: existingUser[0].avatarCode,
+            bio: existingUser[0].bio,
             wheat: existingUser[0].wheat,
             stone: existingUser[0].stone,
             wood: existingUser[0].wood,
