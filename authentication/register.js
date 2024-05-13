@@ -16,7 +16,6 @@ const pool = mysql.createPool({
 
 router.post('/', async (req, res) => {
     const { email, password, username } = req.body;
-    console.log(email + password + username);
 
     if (!isValidEmail(email)) {
         return res.status(400).json({ error: 'Invalid email format' });
@@ -57,7 +56,6 @@ function generateRandomToken() {
     }
     return token;
 }
-
 
 function isValidEmail(email) {
 

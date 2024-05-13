@@ -17,12 +17,12 @@ router.use(bodyParser.urlencoded({ extended: true }));
 router.use(bodyParser.json());
 
 router.get('/', (req, res) => {
-    const userEmail = req.body.email;
-    const token = req.body.token; 
+    const { email } = req.body;
 
+    const token = generateRandomToken();
     transporter.sendMail({
         from: '"Manataz Studio " <Manatazstudio@gmail.com>', 
-        to: userEmail, 
+        to: email, 
         subject: "Forget Password", 
         text: "Code for reset password: " + token,
     }, (error, info) => {
@@ -31,9 +31,18 @@ router.get('/', (req, res) => {
             res.status(500).send("Error sending email");
         } else {
             console.log("Email sent: %s", info.messageId);
-            res.send(`Message sent to ${userEmail}`);
+            res.send("Email sent and token is : ", token);
         }
     });
 });
+
+
+function generateRandomToken() {
+    let token = '';
+    for (let i = 0; i < 5; i++) {
+        token += Math.floor(Math.random() * 10); // Generate random digit (0-9)
+    }
+    return token;
+}
 
 module.exports = router;
