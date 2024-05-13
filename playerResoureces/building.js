@@ -13,7 +13,7 @@ const pool = mysql.createPool({
     queueLimit: 0
 });
 
-router.get('/',async (req,res)=>{
+router.get('/', async (req, res) => {
 
     const userId = req.body.id;
 
@@ -37,19 +37,24 @@ router.get('/',async (req,res)=>{
 
 });
 
-router.post('/updateTable',async(req,res)=>{
+router.post('/updateTable', async (req, res) => {
 
-    const {userId, buildingName, buildingData} = req.body;
-    console.log(req.body);
-    const [existingUser] = await pool.query('SELECT * FROM userbuildings WHERE playerToken = ?', [userId]);
+    const { userId, buildingName, buildingData } = req.body;
+
+    try {
+
+        const [existingUser] = await pool.query('SELECT * FROM userbuildings WHERE playerToken = ?', [userId]);
 
         if (existingUser.length === 0) {
             return res.status(404).json({ error: 'User not found' });
         }
         const sql = `UPDATE userbuildings SET ${buildingName} = ? WHERE playerToken = ?`;
-
-
         await pool.query(sql, [buildingData, userId]);
+
+    } catch (error) {
+        console.error('Error find data:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
 });
 
 module.exports = router;

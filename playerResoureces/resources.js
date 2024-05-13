@@ -14,7 +14,6 @@ const pool = mysql.createPool({
   
   router.post('/', async (req, res) => {
   
-    console.log("sa");
     const { playerToken, wheat, stone, wood, iron } = req.body;
     const [existingUser] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [playerToken]);
   
