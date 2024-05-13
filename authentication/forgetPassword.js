@@ -2,21 +2,22 @@ const express = require('express');
 const router = express.Router();
 
 const mailgun = require('mailgun-js')({
-    apiKey: 'pubkey-dc880ffb73d6de20009101249cbb70b7',
+    apiKey: 'e9515ff744e3552f083aafff01fee01a-32a0fef1-c4c0e5b9',
     domain: 'sandbox48d130a26fdd4c98a1eb63865ea3156b.mailgun.org'
 });
 
-router.get('/', (req, res) => {
-    const { email } = req.query; // Assuming email is passed as a query parameter
-    console.log("ok");
+router.post('/', (req, res) => {
+    const { email } = req.body; 
+
     const token = generateRandomToken();
+
     const data = {
-        from: 'Manataz Studio " <Manatazstudio@gmail.com>',
+        from: 'Manataz Studio <Manatazstudio@gmail.com>',
         to: email,
         subject: "Forget Password",
         text: "Code for reset password: " + token
     };
-    
+
     mailgun.messages().send(data, (error, body) => {
         if (error) {
             console.error(error);
@@ -27,6 +28,7 @@ router.get('/', (req, res) => {
         }
     });
 });
+
 
 
 
