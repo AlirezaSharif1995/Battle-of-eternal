@@ -19,7 +19,7 @@ router.get('/', async (req, res) => {
 
     try {
         // Check if the user exists in the database
-        const [existingUser] = await pool.query('SELECT * FROM userbuildings WHERE userId = ?', [userId]);
+        const [existingUser] = await pool.query('SELECT * FROM userbuildings WHERE playerToken = ?', [userId]);
 
         if (existingUser.length === 0) {
             return res.status(404).json({ error: 'User not found' });
