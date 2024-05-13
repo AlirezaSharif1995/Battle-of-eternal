@@ -13,6 +13,7 @@
     "bcrypt": "^5.1.1",
     "bcryptjs": "^2.4.3",
     "express": "^4.19.2",
+    "mailgun-js": "^0.22.0",
     "mysql": "^2.18.1",
     "mysql2": "^3.9.7",
     "nodemailer": "^6.9.13",

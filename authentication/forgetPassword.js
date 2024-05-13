@@ -1,39 +1,35 @@
 const express = require('express');
 const router = express.Router();
-const bodyParser = require('body-parser');
-const nodemailer = require('nodemailer');
 
-const transporter = nodemailer.createTransport({
-    host: 'smtp.ethereal.email',
-    port: 587,
-    secure: false, 
-    auth: {
-        user: 'davion.homenick@ethereal.email',
-        pass: 'XeSGvxqMEfXUE1bGq5'
+const mailgun = require('mailgun-js')({
+    apiKey: 'pubkey-dc880ffb73d6de20009101249cbb70b7',
+    domain: 'Manatazstudio@gmail.com',
+    tls: {
+        ciphers: 'SSLv3'
     }
 });
 
-router.use(bodyParser.urlencoded({ extended: true }));
-router.use(bodyParser.json());
 
 router.get('/', (req, res) => {
     const { email } = req.body;
 
     const token = generateRandomToken();
-    transporter.sendMail({
-        from: '"Manataz Studio " <Manatazstudio@gmail.com>', 
-        to: email, 
-        subject: "Forget Password", 
-        text: "Code for reset password: " + token,
-    }, (error, info) => {
+    const data = {
+        from: 'Manataz Studio " <Manatazstudio@gmail.com>',
+        to: email,
+        subject: "Forget Password",
+        text: "Code for reset password: " + token
+    };
+    
+    mailgun.messages().send(data, (error, body) => {
         if (error) {
-            console.error("Error sending email:", error);
-            res.status(500).send("Error sending email");
+            console.error(error);
         } else {
-            console.log("Email sent: %s", info.messageId);
-            res.send("Email sent and token is : ", token);
+            console.log(body);
         }
     });
+    
+
 });
 
 
