@@ -1,11 +1,7 @@
 const express = require('express');
-const registrationRouter = require('./authentication/register');
-const loginRouter = require('./authentication/login');
-const forgetPassword = require('./authentication/forgetPassword');
-const building = require('./playerResoureces/building');
-const playerResources = require('./playerResoureces/resources');
-const mysql = require('mysql2/promise');
-
+const { registrationRouter, loginRouter, forgetPassword } = require('./authentication');
+const { building, playerResources} = require('./playerResoureces');
+const { createAlliance, joinAlliance } = require('./Alliance');
 
 const app = express();
 app.use(express.json());
@@ -14,6 +10,8 @@ app.use('/login',loginRouter);
 app.use('/forgetPassword',forgetPassword);
 app.use('/building',building);
 app.use('/updateResources',playerResources);
+app.use('/createAlliance',createAlliance);
+app.use('/joinAlliance',joinAlliance);
 
 
 const port = 3000;
