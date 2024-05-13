@@ -48,8 +48,10 @@ router.post('/updateTable', async (req, res) => {
         if (existingUser.length === 0) {
             return res.status(404).json({ error: 'User not found' });
         }
-        const sql = `UPDATE userbuildings SET ${buildingName} = ? WHERE playerToken = ?`;
-        await pool.query(sql, [buildingData, userId]);
+
+    const sql = `UPDATE userbuildings SET ${buildingName} = ? WHERE playerToken = ?`;
+    await pool.query(sql, [JSON.stringify(buildingData), userId]);
+    return res.status(200).json({ message: 'Building data updated successfully' });
 
     } catch (error) {
         console.error('Error find data:', error);
