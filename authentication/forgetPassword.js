@@ -3,16 +3,12 @@ const router = express.Router();
 
 const mailgun = require('mailgun-js')({
     apiKey: 'pubkey-dc880ffb73d6de20009101249cbb70b7',
-    domain: 'Manatazstudio@gmail.com',
-    tls: {
-        ciphers: 'SSLv3'
-    }
+    domain: 'sandbox48d130a26fdd4c98a1eb63865ea3156b.mailgun.org'
 });
 
-
 router.get('/', (req, res) => {
-    const { email } = req.body;
-
+    const { email } = req.query; // Assuming email is passed as a query parameter
+    console.log("ok");
     const token = generateRandomToken();
     const data = {
         from: 'Manataz Studio " <Manatazstudio@gmail.com>',
@@ -24,13 +20,14 @@ router.get('/', (req, res) => {
     mailgun.messages().send(data, (error, body) => {
         if (error) {
             console.error(error);
+            res.status(500).send("Error sending email");
         } else {
             console.log(body);
+            res.send("Email sent successfully");
         }
     });
-    
-
 });
+
 
 
 function generateRandomToken() {
