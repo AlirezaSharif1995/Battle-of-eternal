@@ -1,8 +1,8 @@
 const createAlliance = require('./createAlliance');
-const joinAlliance = require('./joinAlliance');
+const allianceManager = require('./allianceManager');
 
 
 module.exports = {
     createAlliance: createAlliance,
-    joinAlliance: joinAlliance
+    allianceManager: allianceManager
 };

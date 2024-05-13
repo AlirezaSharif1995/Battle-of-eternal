@@ -16,6 +16,7 @@ const pool = mysql.createPool({
 
 router.post('/', async(req,res)=>{
     const { name, description, leader_id } = req.body;
+    console.log(req.body)
 
     try {
         const token = generateRandomToken();

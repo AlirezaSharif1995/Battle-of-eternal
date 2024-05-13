@@ -39,7 +39,9 @@ router.post('/', async (req, res) => {
             wheat: existingUser[0].wheat,
             stone: existingUser[0].stone,
             wood: existingUser[0].wood,
-            iron: existingUser[0].iron
+            iron: existingUser[0].iron,
+            clan: existingUser[0].clan_id,
+            role: existingUser[0].clan_role
         };
 
         res.status(200).json({ message: 'Login successful', user });
