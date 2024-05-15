@@ -62,8 +62,8 @@ router.post('/sendRequest',async (req,res)=>{
             return res.status(400).json({ error: 'player already exists in the list' });
         }
 
-        await pool.query('UPDATE clans SET recivedRequest = ? WHERE clan_id = ?', [JSON.stringify(updatedRequestList), token]);
-        res.status(201).json({ message: 'Player left successfully' });
+        await pool.query('UPDATE clans SET recivedRequests = ? WHERE id = ?', [JSON.stringify(updatedRequestList), clan_id]);
+        res.status(201).json({ message: 'Request sent!' });
 
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
