@@ -29,9 +29,6 @@ router.post('/', (req, res) => {
     });
 });
 
-
-
-
 function generateRandomToken() {
     let token = '';
     for (let i = 0; i < 5; i++) {

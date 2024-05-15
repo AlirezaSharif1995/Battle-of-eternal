@@ -3,7 +3,6 @@ const router = express.Router();
 const bcrypt = require('bcrypt');
 const mysql = require('mysql2/promise');
 
-
 const pool = mysql.createPool({
     host: 'localhost',
     user: 'root',
@@ -13,7 +12,6 @@ const pool = mysql.createPool({
     connectionLimit: 10,
     queueLimit: 0
 });
-
 
 router.post('/', async (req, res) => {
     const { email, password } = req.body;
@@ -53,6 +51,5 @@ router.post('/', async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
-
 
 module.exports = router;
