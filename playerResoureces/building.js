@@ -26,7 +26,6 @@ router.get('/', async (req, res) => {
         }
 
         const buildingInformation = existingUser[0];
-        console.log(buildingInformation);
 
         res.status(200).json({ message: 'Data found!', buildingInformation });
 

@@ -13,22 +13,20 @@ const pool = mysql.createPool({
 });
 
 
-router.get('/', async (req,res)=>{
+router.get('/', async (req, res) => {
     const { playerToken } = req.body;
     try {
-        const [player] = await pool.query('SELECT * FROM clans WHERE id = ?', [playerToken]);
+        const [player] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [playerToken]);
 
         const playerData = {
-            username: player.username,
-            avatar: player.avatar,
-            cities: player.cities,
-            clan: player.clan_id,
-            population: player.population,
-            bio: player.bio,
-
-
+            username: player[0].username,
+            avatarCode: player[0].avatarCode,
+            cities: player[0].cities,
+            clan: player[0].clan_id,
+            population: player[0].population,
+            bio: player[0].bio
         }
-        res.status(201).json({ message: 'player information :', player });
+        res.status(201).json({ message: 'player information', playerData });
 
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });

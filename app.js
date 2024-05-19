@@ -1,5 +1,5 @@
 const express = require('express');
-const { registrationRouter, loginRouter, forgetPassword } = require('./authentication');
+const { registrationRouter, loginRouter, forgetPassword, playerInfo } = require('./authentication');
 const { building, playerResources} = require('./playerResoureces');
 const { createAlliance, allianceManager } = require('./Alliance');
 
@@ -12,6 +12,7 @@ app.use('/building',building);
 app.use('/updateResources',playerResources);
 app.use('/createAlliance',createAlliance);
 app.use('/allianceManager',allianceManager);
+app.use('/playerInfo',playerInfo);
 
 
 const port = 3000;
