@@ -1,7 +1,8 @@
 const express = require('express');
 const { registrationRouter, loginRouter, forgetPassword, playerInfo } = require('./authentication');
-const { building, playerResources} = require('./playerResoureces');
+const { building, playerResources, reportHandler} = require('./playerResoureces');
 const { createAlliance, allianceManager } = require('./Alliance');
+const path = require('path');
 
 const app = express();
 app.use(express.json());
@@ -13,7 +14,7 @@ app.use('/updateResources',playerResources);
 app.use('/createAlliance',createAlliance);
 app.use('/allianceManager',allianceManager);
 app.use('/playerInfo',playerInfo);
-
+app.use('/report',reportHandler);
 
 const port = 3000;
 app.listen(port, () => {

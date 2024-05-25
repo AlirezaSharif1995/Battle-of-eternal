@@ -38,7 +38,7 @@ router.post('/leave', async (req, res) => {
     }
 });
 
-router.get('/clanInfo', async (req,res)=>{
+router.get('/clanInfo', async (req, res) => {
     const { clan_id } = req.body;
     try {
         const [clan] = await pool.query('SELECT * FROM clans WHERE id = ?', [clan_id]);
@@ -72,7 +72,7 @@ router.post('/sendRequest', async (req, res) => {
 
         res.status(201).json({ message: 'Request sent!' });
     } catch (error) {
-        console.error(error);  
+        console.error(error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -100,9 +100,66 @@ router.post('/invitePlayer', async (req, res) => {
 
         res.status(201).json({ message: 'Request sent!' });
     } catch (error) {
-        console.error(error);  
+        console.error(error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
 
+router.post('/clanReject', async (req, res) => {
+    const { playerToken, clan_id } = req.body;
+    try {
+        const [rows] = await pool.query('SELECT * FROM clans WHERE id = ?', [clan_id]);
+
+        if (rows.length === 0) {
+            return res.status(404).json({ error: 'Clan not found' });
+        }
+
+        const clan = rows[0];
+        let updatedRequestList = clan.recivedRequests ? JSON.parse(clan.recivedRequests) : [];
+
+        if (!updatedRequestList.includes(playerToken)) {
+            return res.status(400).json({ error: 'Player not found in the list' });
+        }
+
+        updatedRequestList = updatedRequestList.filter(token => token !== playerToken);
+
+        await pool.query('UPDATE clans SET recivedRequests = ? WHERE id = ?', [JSON.stringify(updatedRequestList), clan_id]);
+
+        res.status(200).json({ message: 'Player rejected from the clan successfully!' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.post('/rejectInvite', async (req, res) => {
+    const { playerToken, clan_id } = req.body;
+    try {
+        // Fetch player by playerToken
+        const [rows] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [playerToken]);
+
+        if (rows.length === 0) {
+            return res.status(404).json({ error: 'Player not found' });
+        }
+
+        const player = rows[0];
+        let updatedRequestList = player.recivedRequests ? JSON.parse(player.recivedRequests) : [];
+
+        // Check if the clan_id is in the player's recivedRequests list
+        if (!updatedRequestList.includes(clan_id)) {
+            return res.status(400).json({ error: 'Clan request not found in the list' });
+        }
+
+        // Remove the clan_id from the recivedRequests list
+        updatedRequestList = updatedRequestList.filter(id => id !== clan_id);
+
+        // Update the player's recivedRequests list in the database
+        await pool.query('UPDATE users SET recivedRequests = ? WHERE playerToken = ?', [JSON.stringify(updatedRequestList), playerToken]);
+
+        res.status(200).json({ message: 'Clan request rejected successfully!' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 module.exports = router;
