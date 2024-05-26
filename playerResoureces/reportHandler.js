@@ -28,7 +28,7 @@ router.get('/clanPopulation', async (req, res) => {
     try {
         const { clan_id } = req.body;
         const [players] = await pool.query(
-            'SELECT username, population FROM users WHERE clan_id = ? ORDER BY population DESC LIMIT 10',
+            'SELECT username, avatarCode, cities, clan_id, population FROM users WHERE clan_id = ? ORDER BY population DESC LIMIT 10',
             [clan_id]
         );
         res.send(players);
@@ -42,7 +42,7 @@ router.get('/allPlayerPopulation', async (req,res) => {
 
     try {
         const [players] = await pool.query(
-            'SELECT username, population FROM users ORDER BY population DESC LIMIT 10'
+            'SELECT username, avatarCode, cities, clan_id, population FROM users ORDER BY population DESC LIMIT 10'
         );
         res.send(players);
     } catch (error) {
@@ -50,5 +50,6 @@ router.get('/allPlayerPopulation', async (req,res) => {
         res.status(500).send('Internal Server Error');
     }
 });
+
 
 module.exports = router;

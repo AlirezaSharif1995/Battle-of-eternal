@@ -14,12 +14,12 @@ const pool = mysql.createPool({
 });
 
 router.post('/', async(req,res)=>{
-    const { name, description, leader_id } = req.body;
+    const { name, description, leader_id, avatarCode, mode } = req.body;
     console.log(req.body)
 
     try {
         const token = generateRandomToken();
-        await pool.query('INSERT INTO clans (id, name, description, leader_id) VALUES (?, ?, ?, ?)', [token, name, description, leader_id]);
+        await pool.query('INSERT INTO clans (id, name, description, leader_id, avatarCode, mode) VALUES (?, ?, ?, ?, ?, ?)', [token, name, description, leader_id, avatarCode, mode]);
         res.status(201).json({ message: 'Alliance registered successfully', clanToken: token });
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });

@@ -162,4 +162,43 @@ router.post('/rejectInvite', async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
+
+router.post('/changeClanAvatar', async (req, res) => {
+    const { avatarCode, clan_id } = req.body;
+
+    try {
+
+        await pool.query('UPDATE clans SET avatarCode = ? WHERE id = ?', [avatarCode, clan_id]);
+        res.status(200).json({ message: 'Avatar updated successfully' });
+
+    } catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.post('/changeDyplomacy', async (req, res) => {
+    const { diplomacy, clan_id } = req.body;
+
+    try {
+
+        await pool.query('UPDATE clans SET diplomacy = ? WHERE id = ?', [diplomacy, clan_id]);
+        res.status(200).json({ message: 'diplomacy updated successfully' });
+
+    } catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.post('/changeMode', async (req, res) => {
+    const { mode, clan_id } = req.body;
+
+    try {
+
+        await pool.query('UPDATE clans SET mode = ? WHERE id = ?', [mode, clan_id]);
+        res.status(200).json({ message: 'mode updated successfully' });
+
+    } catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 module.exports = router;

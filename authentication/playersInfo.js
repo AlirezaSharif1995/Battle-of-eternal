@@ -1,9 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const mysql = require('mysql2/promise');
-const multer = require('multer');
-const fs = require('fs');
-const path = require('path');
 
 const pool = mysql.createPool({
     host: 'localhost',
@@ -14,17 +11,6 @@ const pool = mysql.createPool({
     connectionLimit: 10,
     queueLimit: 0
 });
-
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, 'updatedPicture/'); // Directory where images will be saved
-    },
-    filename: function (req, file, cb) {
-        cb(null, file.fieldname + '-' + Date.now() + path.extname(file.originalname)); // Append timestamp to the filename
-    }
-});
-
-const upload = multer({ storage: storage });
 
 router.get('/', async (req, res) => {
     const { playerToken } = req.body;
@@ -63,14 +49,14 @@ router.get('/recivedRequests', async (req, res) => {
 
 });
 
-router.post('/replaceProfileImage', async (req, res) => {
+router.post('/changeAvatar', async (req, res) => {
 
     const { playerToken, avatarCode } = req.body;
 
     try {
 
-        await pool.query('UPDATE users SET imageData = ? WHERE playerToken = ?', [avatarCode, playerToken]);
-        res.status(200).json({ message: 'Profile image updated successfully' });
+        await pool.query('UPDATE users SET avatarCode = ? WHERE playerToken = ?', [avatarCode, playerToken]);
+        res.status(200).json({ message: 'Avatar updated successfully' });
 
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
@@ -88,5 +74,22 @@ router.post('/changeUsername', async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
+
+router.post('/changeMedals', async (req, res) => {
+    const { playerToken, medals } = req.body;
+
+    try {
+        await pool.query('UPDATE users SET medals = ? WHERE playerToken = ?', [medals, playerToken]);
+        const [player] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [playerToken]);
+
+        const playerData = {
+            medals: player[0].Medals
+        }
+        res.status(201).json({ message: 'medals', playerData });
+    } catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 
 module.exports = router;
