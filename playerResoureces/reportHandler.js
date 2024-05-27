@@ -55,7 +55,7 @@ router.get('/managerRole', async (req, res) => {
     try {
         const { clan_id } = req.body;  // Assuming clan_id is passed as a query parameter
         console.log(clan_id)
-        const [clanMembers] = await pool.query('SELECT username, clan_role FROM users WHERE clan_role LIKE ? AND clan_id = ?', ['%manager%', clan_id]);
+        const [clanMembers] = await pool.query('SELECT username,playerToken, clan_role FROM users WHERE clan_role LIKE ? AND clan_id = ?', ['%manager%', clan_id]);
         res.send(clanMembers);
     } catch (error) {
         console.error(error);
