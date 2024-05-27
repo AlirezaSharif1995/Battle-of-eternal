@@ -201,4 +201,30 @@ router.post('/changeMode', async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
+
+router.post('/changeDescription', async (req, res) => {
+    const { description, clan_id } = req.body;
+
+    try {
+
+        await pool.query('UPDATE clans SET description = ? WHERE id = ?', [description, clan_id]);
+        res.status(200).json({ message: 'description updated successfully' });
+
+    } catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.post('/changeClanName', async (req, res) => {
+    const { name, clan_id } = req.body;
+
+    try {
+
+        await pool.query('UPDATE clans SET name = ? WHERE id = ?', [name, clan_id]);
+        res.status(200).json({ message: 'name updated successfully' });
+
+    } catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 module.exports = router;

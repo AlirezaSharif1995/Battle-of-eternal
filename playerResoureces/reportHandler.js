@@ -38,13 +38,25 @@ router.get('/clanPopulation', async (req, res) => {
     }
 });
 
-router.get('/allPlayerPopulation', async (req,res) => {
+router.get('/allPlayerPopulation', async (req, res) => {
 
     try {
         const [players] = await pool.query(
             'SELECT username, avatarCode, cities, clan_id, population FROM users ORDER BY population DESC LIMIT 10'
         );
         res.send(players);
+    } catch (error) {
+        console.error(error);
+        res.status(500).send('Internal Server Error');
+    }
+});
+
+router.get('/managerRole', async (req, res) => {
+    try {
+        const { clan_id } = req.body;  // Assuming clan_id is passed as a query parameter
+        console.log(clan_id)
+        const [clanMembers] = await pool.query('SELECT username, clan_role FROM users WHERE clan_role LIKE ? AND clan_id = ?', ['%manager%', clan_id]);
+        res.send(clanMembers);
     } catch (error) {
         console.error(error);
         res.status(500).send('Internal Server Error');
