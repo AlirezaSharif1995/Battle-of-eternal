@@ -18,7 +18,6 @@ app.use('/playerInfo',playerInfo);
 app.use('/report',reportHandler);
 app.use('/blockchainManager/wheatManager',wheatManager);
 
-
 app.use(express.static(path.join(__dirname, 'Build')));
 app.get('/playGame', (req, res) => {
   res.sendFile(path.join(__dirname, 'Build', 'index.html'));
