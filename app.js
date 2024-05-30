@@ -3,6 +3,7 @@ const { registrationRouter, loginRouter, forgetPassword, playerInfo } = require(
 const { building, playerResources, reportHandler} = require('./playerResoureces');
 const { createAlliance, allianceManager } = require('./Alliance');
 const { wheatManager } = require('./blockchainManager');
+const transition = require('./blockchainManager/transition');
 const path = require('path');
 
 const app = express();
@@ -17,6 +18,7 @@ app.use('/allianceManager',allianceManager);
 app.use('/playerInfo',playerInfo);
 app.use('/report',reportHandler);
 app.use('/blockchainManager/wheatManager',wheatManager);
+app.use('/transition', transition);
 
 app.use(express.static(path.join(__dirname, 'Build')));
 app.get('/playGame', (req, res) => {
