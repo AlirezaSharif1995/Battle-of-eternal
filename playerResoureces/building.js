@@ -36,6 +36,30 @@ router.get('/', async (req, res) => {
 
 });
 
+
+router.post('/buildingPost', async (req, res) => {
+
+    const userId = req.body.id;
+
+    try {
+        // Check if the user exists in the database
+        const [existingUser] = await pool.query('SELECT * FROM userbuildings WHERE playerToken = ?', [userId]);
+
+        if (existingUser.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const buildingInformation = existingUser[0];
+
+        res.status(200).json({ message: 'Data found!', buildingInformation });
+
+    } catch {
+        console.error('Error find data:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+
+});
+
 router.post('/updateTable', async (req, res) => {
 
     const { userId, buildingName, buildingData } = req.body;
