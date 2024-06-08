@@ -81,9 +81,11 @@ router.post('/test', async (req, res) => {
         };
 
         const signedTx = await web3.eth.accounts.signTransaction(transaction, privateKey);
+
         const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
         console.log("Transaction sent. Transaction hash:", receipt.transactionHash);
 
+        // Check the transaction status
         const txReceipt = await web3.eth.getTransactionReceipt(receipt.transactionHash);
         if (txReceipt.status) {
             res.status(200).json({ message: 'Transaction successful', transactionHash: receipt.transactionHash });
