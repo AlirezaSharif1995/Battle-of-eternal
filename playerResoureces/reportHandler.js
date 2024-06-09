@@ -42,7 +42,7 @@ router.get('/allPlayerPopulation', async (req, res) => {
 
     try {
         const [players] = await pool.query(
-            'SELECT username, avatarCode, cities, clan_id, population FROM users ORDER BY population DESC LIMIT 10'
+            'SELECT username, avatarCode, cities, clan_id, population FROM users ORDER BY population DESC LIMIT 100'
         );
         res.send(players);
     } catch (error) {
