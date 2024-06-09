@@ -2,13 +2,13 @@ const express = require('express');
 const { default: Web3 } = require('web3');
 const router = express.Router();
 
-const url = "https://mainnet.infura.io/v3/375bba65af974140b99d3ac8ebd1c97e";
+const url = "https://mainnet.infura.io/v3/a3db6f10d9eb4400b5b9cd9df548c5d4";
 
 const web3 = new Web3(url);
 
-const senderAddress = "0x1Be31A94361a391bBaFB2a4CCd704F57dc04d4bb";
-const recipientAddress = "0x1234567890abcdef1234567890abcdef12345678";
-const privateKey = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
+const senderAddress = "0x7a49d58C0BE89241Ce56d079f6ca177E0b93A81f";
+const recipientAddress = "0x1Be31A94361a391bBaFB2a4CCd704F57dc04d4bb";
+const privateKey = "5109b64e0b091dbc58c03a8c43996f825db660d967b8d8a9ad49a386ea6ab43f";
 
 if (!web3.utils.isAddress(senderAddress)) {
     throw new Error(`Invalid sender address format: ${senderAddress}`);
@@ -27,7 +27,7 @@ router.post('/', async (req, res) => {
             to: recipientAddress,
             value: web3.utils.toWei('0.01', 'ether'),
             gas: 21000,  // Gas limit
-            gasPrice: web3.utils.toWei('10', 'gwei'),
+            gasPrice: web3.utils.toWei('20', 'gwei'),
             nonce: nonce,
         };
 
@@ -74,9 +74,9 @@ router.post('/test', async (req, res) => {
 
         const transaction = {
             to: recipientAddress,
-            value: web3.utils.toWei('0.01', 'ether'), 
+            value: web3.utils.toWei('0.00000000001', 'ether'), 
             gas: 21000,  // Gas limit
-            gasPrice: web3.utils.toWei('100', 'gwei'),  
+            gasPrice: web3.utils.toWei('20', 'gwei'),  
             nonce: nonce,
         };
 
