@@ -42,7 +42,8 @@ router.post('/', async (req, res) => {
             iron: existingUser[0].iron,
             clan: existingUser[0].clan_id,
             role: existingUser[0].clan_role,
-            recivedRequests: existingUser[0].recivedRequests
+            recivedRequests: existingUser[0].recivedRequests,
+            force: existingUser[0].force
         };
 
         res.status(200).json({ message: 'Login successful', user });
@@ -73,7 +74,8 @@ router.post('/playerToken', async (req, res) => {
             iron: existingUser[0].iron,
             clan: existingUser[0].clan_id,
             role: existingUser[0].clan_role,
-            recivedRequests: existingUser[0].recivedRequests
+            recivedRequests: existingUser[0].recivedRequests,
+            force: existingUser[0].force
         };
 
         res.status(200).json({ message: 'Login successful', user });

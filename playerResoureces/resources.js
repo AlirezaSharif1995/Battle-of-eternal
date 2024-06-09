@@ -33,7 +33,6 @@ router.post('/', async (req, res) => {
 router.post('/cupTransfer', async (req, res) => {
 
   const { playerToken, clan_id, cupAmount } = req.body;
-  console.log(req.body);
   try {
     const [clanCup] = await pool.query('SELECT * FROM clans WHERE id = ?', clan_id);
     const [playerCups] = await pool.query('SELECT * FROM users WHERE playerToken = ?', playerToken);
@@ -50,5 +49,44 @@ router.post('/cupTransfer', async (req, res) => {
   }
 
 });
+
+router.post('/getForce', async (req, res) => {
+  const { playerToken } = req.body;
+  try {
+    const [existingUser] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [playerToken]);
+    if (existingUser.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const user = {
+      force: existingUser[0].force
+    }
+    res.status(200).json(user);
+
+  } catch (error) {
+    console.error('Error logging in:', error);
+    res.status(500).json({ error: 'Internal server error' });
+
+  }
+});
+
+router.post('/forceUpdate', async (req, res) => {
+  const { playerToken, force } = req.body;
+  try {
+    const [existingUser] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [playerToken]);
+
+    if (existingUser.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    await pool.query('UPDATE users SET `force` = ? WHERE playerToken = ?', [JSON.stringify(force), playerToken]);
+    res.status(200).json({ message: 'Force updated successfully' });
+
+  } catch (error) {
+    console.error('Error logging in:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+
+});
+
 
 module.exports = router;
