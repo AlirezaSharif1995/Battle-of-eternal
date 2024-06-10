@@ -14,6 +14,7 @@ const pool = mysql.createPool({
 });
 
 router.post('/', async (req, res) => {
+
     const { email, password } = req.body;
 
     try {
