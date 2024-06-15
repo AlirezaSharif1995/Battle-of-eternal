@@ -35,10 +35,11 @@ router.post('/', async (req, res) => {
 
         // Hash the password
         const hashedPassword = await bcrypt.hash(password, 10);
+        const now = new Date();
 
         const token = generateRandomToken();
         // Insert new user into the database
-        await pool.query('INSERT INTO users (playerToken, email, password_hash, username) VALUES (?, ?, ?, ?)', [token, email, hashedPassword, username]);
+        await pool.query('INSERT INTO users (playerToken, email, password_hash, username, lastUpdated) VALUES (?, ?, ?, ?, ?)', [token, email, hashedPassword, username, now]);
         await pool.query('INSERT INTO userbuildings (playerToken) VALUES (?)', [token]);
 
         res.status(201).json({ message: 'User registered successfully', playerToken: token });
