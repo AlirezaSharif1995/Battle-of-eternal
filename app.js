@@ -10,6 +10,8 @@ const { createAlliance, allianceManager } = require('./Alliance');
 const { wheatManager } = require('./blockchainManager');
 const { warManager } = require('./wars');
 const transition = require('./blockchainManager/transition');
+const updatePlayerResources = require('./playerResoureces/updateResources');
+
 
 const app = express();
 app.use(express.json());
@@ -31,6 +33,10 @@ app.use(express.static(path.join(__dirname, 'Build')));
 app.get('/playGame', (req, res) => {
   res.sendFile(path.join(__dirname, 'Build', 'index.html'));
 });
+
+const INTERVAL_TIME = 60 * 1000;
+updatePlayerResources();
+setInterval(updatePlayerResources, INTERVAL_TIME);
 
 const server = http.createServer(app);
 const io = socketIo(server);

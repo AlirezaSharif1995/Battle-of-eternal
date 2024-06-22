@@ -36,7 +36,6 @@ router.get('/', async (req, res) => {
 
 });
 
-
 router.post('/buildingPost', async (req, res) => {
 
     const userId = req.body.id;

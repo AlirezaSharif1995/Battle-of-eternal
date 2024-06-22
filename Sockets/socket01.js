@@ -35,7 +35,7 @@ module.exports = function (io) {
                     await pool.query('UPDATE users SET wood = ?, wheat = ?, stone = ?, iron = ?, lastUpdated = ? WHERE playerToken = ?',
                         [updatedResources.wood, updatedResources.wheat, updatedResources.stone, updatedResources.iron, now, playerId]);
                 }
-                console.log(updatedResources)
+
                 socket.emit('update_resources', updatedResources);
             } catch (error) {
                 console.error('Error updating player resources:', error);
