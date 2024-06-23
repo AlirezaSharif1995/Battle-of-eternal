@@ -24,15 +24,13 @@ function updatePlayerResources() {
       const updatedStone = player.stone + player.stoneLevel;
       const updatedWheat = player.wheat + player.wheatLevel;
       const updatedIron = player.iron + player.ironLevel;
-      const updateQuery = 'UPDATE players SET wood = ?, stone = ?, wheat = ?, iron = ? WHERE id = ?';
+      const updateQuery = 'UPDATE users SET wood = ?, stone = ?, wheat = ?, iron = ? WHERE playerToken = ?';
 
-      connection.query(updateQuery, [updatedWood, updatedStone, updatedWheat, updatedIron, player.id], updateError => {
+      connection.query(updateQuery, [updatedWood, updatedStone, updatedWheat, updatedIron, player.playerToken], updateError => {
         if (updateError) {
           console.error(`Error updating resources for ${player.name}:`, updateError);
           return;
         }
-
-        console.log(`Updated ${player.name}'s resources to wood: ${updatedWood}, stone: ${updatedStone}, wheat: ${updatedWheat}, iron: ${updatedIron}`);
       });
     });
   });

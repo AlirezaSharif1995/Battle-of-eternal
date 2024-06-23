@@ -26,7 +26,7 @@ app.use('/allianceManager', allianceManager);
 app.use('/playerInfo', playerInfo);
 app.use('/report', reportHandler);
 app.use('/blockchainManager/wheatManager', wheatManager);
-app.use('/transition', transition);
+//app.use('/transition', transition);
 app.use('/warManager', warManager);
 
 app.use(express.static(path.join(__dirname, 'Build')));

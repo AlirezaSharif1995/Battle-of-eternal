@@ -13,6 +13,7 @@
     "bcrypt": "^5.1.1",
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.4.5",
+    "ethers": "^6.13.1",
     "express": "^4.19.2",
     "mailgun-js": "^0.6.7",
     "mailgun.js": "^10.2.1",

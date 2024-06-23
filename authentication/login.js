@@ -19,7 +19,7 @@ router.post('/', async (req, res) => {
 
     try {
         // Check if the user exists in the database
-        const [existingUser] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
+        const [existingUser] = await pool.query('SELECT * FROM users WHERE email = ? AND cities = 1', [email]);
 
         if (existingUser.length === 0) {
             return res.status(404).json({ error: 'User not found' });
@@ -37,6 +37,7 @@ router.post('/', async (req, res) => {
             username: existingUser[0].username,
             avatarCode: existingUser[0].avatarCode,
             bio: existingUser[0].bio,
+            cities: existingUser[0].cities,
             wheat: existingUser[0].wheat,
             stone: existingUser[0].stone,
             wood: existingUser[0].wood,
