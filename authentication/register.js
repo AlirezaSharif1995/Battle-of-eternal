@@ -50,7 +50,7 @@ router.post('/', async (req, res) => {
 });
 
 router.post('/addCity', async (req, res) => {
-    const { playerEmail, cityName, cityPosition } = req.body;
+    const { playerEmail, cityName, cityPositionX, cityPositionY } = req.body;
 
     try {
         const [existingUser] = await pool.query('SELECT * FROM users WHERE email = ? ORDER BY cities DESC', [playerEmail]);
@@ -64,7 +64,7 @@ router.post('/addCity', async (req, res) => {
 
         const token = generateRandomToken();
         // Insert new user into the database
-        await pool.query('INSERT INTO users (playerToken, email, password_hash, username, cities, cityName, cityPosition lastUpdated) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [token, email, hashedPassword, username, cityCount, cityName, cityPosition, now]);
+        await pool.query('INSERT INTO users (playerToken, email, password_hash, username, cities, cityName, cityPositionX, cityPositionY, lastUpdated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [token, email, hashedPassword, username, cityCount, cityName, cityPositionX, cityPositionY, now]);
         await pool.query('INSERT INTO userbuildings (playerToken) VALUES (?)', [token]);
 
         res.status(201).json({ message: 'City registered successfully', playerToken: token });
@@ -90,7 +90,8 @@ router.post('/getCities', async (req, res) => {
                 playerToken: user.playerToken,
                 cities: user.cities,
                 cityName: user.cityName,
-                cityPosition: user.cityPosition
+                citypositionX: user.citypositionX,
+                cityPositionY: user.cityPositionY,
             });
         }
 
