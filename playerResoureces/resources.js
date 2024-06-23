@@ -88,5 +88,100 @@ router.post('/forceUpdate', async (req, res) => {
 
 });
 
+router.post('/updateResourceRate', async (req, res) => {
+  const { playerToken, type, data } = req.body;
 
+  try {
+
+    const [existingUser] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [playerToken]);
+
+    if (existingUser.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const sql = `UPDATE users SET ${type} = ? WHERE playerToken = ?`;
+    await pool.query(sql, [data, playerToken]);
+    res.status(200).json({ message: 'Rate updated successfully' });
+
+  } catch (error) {
+    console.error('Error logging in:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+
+});
+
+router.post('/getResourceRate', async (req, res) => {
+  const { playerToken } = req.body;
+
+  try {
+    const [existingUser] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [playerToken]);
+
+    if (existingUser.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const rates = {
+      ironRate: existingUser[0].ironLevel,
+      wheatRate: existingUser[0].wheatLevel,
+      stoneRate: existingUser[0].stoneLevel,
+      woodRate: existingUser[0].woodLevel
+    }
+    res.status(200).json({ message: 'Rate get successfully', rates });
+
+
+  } catch (error) {
+    console.error('Error logging in:', error);
+    res.status(500).json({ error: 'Internal server error' });
+
+  }
+
+});
+
+router.post('/getCapacity', async (req, res) => {
+  const { playerToken } = req.body;
+
+  try {
+    const [existingUser] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [playerToken]);
+
+    if (existingUser.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const rates = {
+      ironCapacity: existingUser[0].ironCapacity,
+      wheatCapacity: existingUser[0].wheatCapacity,
+      stoneCapacity: existingUser[0].stoneCapacity,
+      woodCapacity: existingUser[0].woodCapacity
+    }
+    res.status(200).json({ message: 'Rate get successfully', rates });
+
+
+  } catch (error) {
+    console.error('Error logging in:', error);
+    res.status(500).json({ error: 'Internal server error' });
+
+  }
+});
+
+router.post('/updateResourceCapacity', async (req, res) => {
+  const { playerToken, type, data } = req.body;
+
+  try {
+
+    const [existingUser] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [playerToken]);
+
+    if (existingUser.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const sql = `UPDATE users SET ${type} = ? WHERE playerToken = ?`;
+    await pool.query(sql, [data, playerToken]);
+    res.status(200).json({ message: 'Capacity updated successfully' });
+
+  } catch (error) {
+    console.error('Error logging in:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+
+});
 module.exports = router;
