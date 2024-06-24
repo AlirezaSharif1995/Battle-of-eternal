@@ -22,10 +22,10 @@ function updatePlayerResources() {
 
     results.forEach(player => {
 
-      const updatedWood = player.wood + player.woodLevel;
-      const updatedStone = player.stone + player.stoneLevel;
-      const updatedWheat = player.wheat + player.wheatLevel;
-      const updatedIron = player.iron + player.ironLevel;
+      let updatedWood = player.wood + player.woodLevel;
+      let updatedStone = player.stone + player.stoneLevel;
+      let updatedWheat = player.wheat + player.wheatLevel;
+      let updatedIron = player.iron + player.ironLevel;
 
       const maxWoodCapacity = player.woodCapacity;
       const maxStoneCapacity = player.stoneCapacity;
