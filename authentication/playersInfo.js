@@ -157,6 +157,26 @@ router.post('/updatePlayerBorder', async (req, res) => {
 
 });
 
+router.post('/getCityPos', async (req, res) => {
+    try {
+        const [rows] = await pool.query(`
+            SELECT 
+                playerToken, 
+                email, 
+                cityName, 
+                cityPositionX, 
+                citypositionY
+            FROM 
+                users
+            `);
+
+        res.status(200).json(rows);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
 function generateRandomToken() {
     let token = '';
     for (let i = 0; i < 5; i++) {

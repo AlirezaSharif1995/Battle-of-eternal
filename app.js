@@ -5,7 +5,7 @@ const path = require('path');
 const socket01 = require('./Sockets/socket01');
 
 const { registrationRouter, loginRouter, forgetPassword, playerInfo } = require('./authentication');
-const { building, playerResources, reportHandler } = require('./playerResoureces');
+const { building, playerResources, reportHandler, prize } = require('./playerResoureces');
 const { createAlliance, allianceManager } = require('./Alliance');
 const { wheatManager } = require('./blockchainManager');
 const { warManager } = require('./wars');
@@ -28,6 +28,8 @@ app.use('/report', reportHandler);
 app.use('/blockchainManager/wheatManager', wheatManager);
 //app.use('/transition', transition);
 app.use('/warManager', warManager);
+app.use('/prize', prize);
+
 
 app.use(express.static(path.join(__dirname, 'Build')));
 app.get('/playGame', (req, res) => {

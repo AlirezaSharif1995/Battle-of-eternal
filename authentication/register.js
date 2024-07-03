@@ -33,13 +33,21 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ error: 'Email is already registered' });
         }
 
+        const [existingUser2] = await pool.query('SELECT * FROM users WHERE username = ?', [username]);
+
+        if (existingUser2.length > 0) {
+            return res.status(400).json({ error: 'username is already registered' });
+        }
+
         // Hash the password
         const hashedPassword = await bcrypt.hash(password, 10);
         const now = new Date();
+        const { x, y } = await generateRandomPosition(pool);
+
 
         const token = generateRandomToken();
         // Insert new user into the database
-        await pool.query('INSERT INTO users (playerToken, email, password_hash, username, lastUpdated) VALUES (?, ?, ?, ?, ?)', [token, email, hashedPassword, username, now]);
+        await pool.query('INSERT INTO users (playerToken, email, password_hash, username, lastUpdated, citypositionX, citypositionY) VALUES (?, ?, ?, ?, ?, ?, ?)', [token, email, hashedPassword, username, now, x, y]);
         await pool.query('INSERT INTO userbuildings (playerToken) VALUES (?)', [token]);
 
         res.status(201).json({ message: 'User registered successfully', playerToken: token });
@@ -106,6 +114,32 @@ router.post('/getCities', async (req, res) => {
 
 });
 
+router.post('/checkRegister', async (req, res) => {
+    const { email, username } = req.body;
+
+    try {
+
+        const [existingUser] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
+
+        if (existingUser.length > 0) {
+            return res.status(400).json({ error: 'Email is already registered' });
+        }
+
+        const [existingUser2] = await pool.query('SELECT * FROM users WHERE username = ?', [username]);
+
+        if (existingUser2.length > 0) {
+            return res.status(400).json({ error: 'username is already registered' });
+        }
+
+        res.status(201).json({ message: 'Email and username is unregisterd' });
+
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 function generateRandomToken() {
     let token = '';
     for (let i = 0; i < 5; i++) {
@@ -122,6 +156,32 @@ function isValidEmail(email) {
 
 function isValidPassword(password) {
     return password.length >= 8;
+}
+
+async function generateRandomPosition(pool) {
+    const start = 100;
+    const end = 10000;
+    const step = 100;
+
+    const getRandomCoordinate = () => {
+        const range = (end - start) / step + 1; // Calculate number of possible values
+        const randomIndex = Math.floor(Math.random() * range); // Random index
+        return start + randomIndex * step; // Convert index to coordinate
+    };
+
+    while (true) {
+        const x = getRandomCoordinate();
+        const y = getRandomCoordinate();
+
+        const [existingUser] = await pool.query(
+            'SELECT * FROM users WHERE citypositionX = ? AND citypositionY = ?',
+            [x, y]
+        );
+
+        if (existingUser.length === 0) {
+            return { x, y };
+        }
+    }
 }
 
 module.exports = router;
