@@ -36,6 +36,11 @@ app.get('/playGame', (req, res) => {
   res.sendFile(path.join(__dirname, 'Build', 'index.html'));
 });
 
+app.use(express.static(path.join(__dirname, 'config2')));
+app.get('/config2', (req, res) => {
+  res.sendFile(path.join(__dirname, 'config2', 'index.html'));
+});
+
 const INTERVAL_TIME = 60 * 1000;
 updatePlayerResources();
 setInterval(updatePlayerResources, INTERVAL_TIME);
