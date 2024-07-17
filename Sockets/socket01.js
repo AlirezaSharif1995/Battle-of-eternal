@@ -10,47 +10,36 @@ const pool = mysql.createPool({
 });
 
 module.exports = function (io) {
+    const connectedUsers = {};
 
     io.on('connection', (socket) => {
-        console.log('A user connected');
-        io.emit('playerJoined', { message: 'A new player has joined the game!' });
+        console.log(`joined the chat`);
+        // connectedUsers[id] = socket.id;
+        // socket.broadcast.emit(`userJoined ${id} joined the chat`);
 
-        socket.on('playerLogin', async (playerId) => {
-
+        socket.on('privateMessage', async (sender, clan, content) => {
             try {
-                const [player] = await pool.query('SELECT * FROM users WHERE playerToken = ?', playerId);
-                const now = new Date();
-                const lastUpdated = new Date(player.lastUpdated);
-                const hoursPassed = Math.floor((now - lastUpdated) / (1000 * 60 * 60));
+                const time = new Date();
+                const timer = `h: ${time.getHours()}  m: ${time.getMinutes()}  D:${time.getDate()}  M:${time.getMonth() + 1}  Y:${time.getFullYear()}`;
+                console.log(content)
+                await pool.query('INSERT INTO messages (sender, clan, contentRT, timeRT) VALUES (?, ?, ?, ?)', [sender, clan, content, timer]);
 
-                let updatedResources = player;
-                if (hoursPassed > 0) {
-                    updatedResources = {
-                        wood: player.wood + hoursPassed * 10,
-                        wheat: player.wheat + hoursPassed * 10,
-                        stone: player.stone + hoursPassed * 10,
-                        iron: player.iron + hoursPassed * 10,
-                    };
+                console.log(`${sender} to ${clan} : ${content}`);
 
-                    await pool.query('UPDATE users SET wood = ?, wheat = ?, stone = ?, iron = ?, lastUpdated = ? WHERE playerToken = ?',
-                        [updatedResources.wood, updatedResources.wheat, updatedResources.stone, updatedResources.iron, now, playerId]);
-                }
+                io.emit('privateMessage', `${sender} , ${clan} , ${content} ,${timer} `);
 
-                socket.emit('update_resources', updatedResources);
             } catch (error) {
-                console.error('Error updating player resources:', error);
+                console.error('Error sending private message:', error);
             }
         });
 
-
-        socket.on('message', (obj) => {
-            console.log('Message received:', obj);
-
-        });
-
-
         socket.on('disconnect', () => {
-            console.log('A user disconnected');
+            const userId = Object.keys(connectedUsers).find(key => connectedUsers[key] === socket.id);
+            if (userId) {
+                delete connectedUsers[userId];
+                console.log(`${userId} went offline`);
+                socket.broadcast.emit(`userDisconnected ${userId} left the chat`);
+            }
         });
     });
 };
