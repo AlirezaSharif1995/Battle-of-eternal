@@ -9,6 +9,8 @@ const { building, playerResources, reportHandler, prize } = require('./playerRes
 const { createAlliance, allianceManager } = require('./Alliance');
 const { wheatManager } = require('./blockchainManager');
 const { warManager } = require('./wars');
+const { messages } = require('./Message');
+
 const transition = require('./blockchainManager/transition');
 const updatePlayerResources = require('./playerResoureces/updateResources');
 
@@ -28,7 +30,8 @@ app.use('/report', reportHandler);
 app.use('/blockchainManager/wheatManager', wheatManager);
 //app.use('/transition', transition);
 app.use('/warManager', warManager);
-app.use('/prize', prize);
+//app.use('/prize', prize);
+app.use("/messages",messages);
 
 
 app.use(express.static(path.join(__dirname, 'Build')));
