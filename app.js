@@ -44,6 +44,11 @@ app.get('/config2', (req, res) => {
   res.sendFile(path.join(__dirname, 'config2', 'index.html'));
 });
 
+app.use(express.static(path.join(__dirname, 'config2')));
+app.get('/book', (req, res) => {
+  res.sendFile(path.join(__dirname, 'config2', 'Book1.csv'));
+});
+
 const INTERVAL_TIME = 60 * 1000;
 updatePlayerResources();
 setInterval(updatePlayerResources, INTERVAL_TIME);
