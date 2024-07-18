@@ -44,13 +44,18 @@ router.post('/getClanMessages', async (req, res) => {
     const { clan } = req.body;
 
     try {
-        const [chats] = await pool.query('SELECT * FROM messages WHERE clan = ?', [clan]);
-        res.status(201).json({ chats });
+        const [chats] = await pool.query(`
+            SELECT m.*, u.avatarcode 
+            FROM messages m
+            LEFT JOIN users u ON m.sender = u.username
+            WHERE m.clan = ?
+        `, [clan]);
 
+        res.status(201).json({ chats });
     } catch (error) {
         console.error('Error getClanMessages:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
-
 });
+
 module.exports = router;
