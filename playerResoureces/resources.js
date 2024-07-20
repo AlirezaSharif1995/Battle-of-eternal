@@ -107,7 +107,7 @@ router.post('/getDefence', async (req, res) => {
   }
 });
 
-router.post(('defenceUpdate', async (req,res)=>{
+router.post('/defenceUpdate', async (req,res)=>{
   const { playerToken, defences } = req.body;
   try {
     const [existingUser] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [playerToken]);
@@ -124,7 +124,7 @@ router.post(('defenceUpdate', async (req,res)=>{
     res.status(500).json({ error: 'Internal server error' });
   }
 
-}));
+});
 
 router.post('/updateResourceRate', async (req, res) => {
   const { playerToken, type, data } = req.body;
