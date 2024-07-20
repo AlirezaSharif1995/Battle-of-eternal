@@ -70,7 +70,7 @@ router.post('/getForce', async (req, res) => {
 });
 
 router.post('/forceUpdate', async (req, res) => {
-  const { playerToken, force } = req.body;
+  const { playerToken, forces } = req.body;
   try {
     const [existingUser] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [playerToken]);
 
@@ -78,7 +78,7 @@ router.post('/forceUpdate', async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    await pool.query('UPDATE users SET `force` = ? WHERE playerToken = ?', [JSON.stringify(force), playerToken]);
+    await pool.query('UPDATE users SET `force` = ? WHERE playerToken = ?', [JSON.stringify(forces), playerToken]);
     res.status(200).json({ message: 'Force updated successfully' });
 
   } catch (error) {
@@ -87,6 +87,44 @@ router.post('/forceUpdate', async (req, res) => {
   }
 
 });
+
+router.post('/getDefence', async (req, res) => {
+  const { playerToken } = req.body;
+  try {
+    const [existingUser] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [playerToken]);
+    if (existingUser.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const user = {
+      force: existingUser[0].defence
+    }
+    res.status(200).json(user);
+
+  } catch (error) {
+    console.error('Error getDefence :', error);
+    res.status(500).json({ error: 'Internal server error' });
+
+  }
+});
+
+router.post(('defenceUpdate', async (req,res)=>{
+  const { playerToken, defences } = req.body;
+  try {
+    const [existingUser] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [playerToken]);
+
+    if (existingUser.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    await pool.query('UPDATE users SET `defence` = ? WHERE playerToken = ?', [JSON.stringify(defences), playerToken]);
+    res.status(200).json({ message: 'Defences updated successfully' });
+
+  } catch (error) {
+    console.error('Error defenceUpdate :', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+
+}));
 
 router.post('/updateResourceRate', async (req, res) => {
   const { playerToken, type, data } = req.body;

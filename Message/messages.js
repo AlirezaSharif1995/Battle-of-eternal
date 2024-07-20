@@ -45,7 +45,7 @@ router.post('/getClanMessages', async (req, res) => {
 
     try {
         const [chats] = await pool.query(`
-            SELECT m.*, u.avatarcode 
+            SELECT m.*, u.avatarCode 
             FROM messages m
             LEFT JOIN users u ON m.sender = u.username
             WHERE m.clan = ?
