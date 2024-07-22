@@ -82,78 +82,142 @@ router.post('/searchReport', async (req, res) => {
 
 async function handleBattleEnd(battleId) {
     try {
-        // Retrieve battle details
-        const [battleResult] = await pool.query('SELECT attack, defence FROM ongoingwar WHERE battleId = ?', [battleId]);
-        const battle = battleResult[0];
+        const [ongoingWarResult] = await pool.query('SELECT * FROM ongoingwar WHERE battleId = ?', [battleId]);
+        const battle = ongoingWarResult[0];
+
         if (!battle) {
-            console.error('Battle not found');
+            console.error(`Battle with ID ${battleId} not found.`);
             return;
         }
 
-        // Retrieve attacker forces
-        const [attackerResult] = await pool.query('SELECT `force` FROM users WHERE playerToken = ?', [battle.attack]);
-        const attackerForces = (attackerResult[0].force);
+        const [attackerResult] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [battle.attack]);
+        const attacker = attackerResult[0];
 
-        // Retrieve defender forces
-        const [defenderResult] = await pool.query('SELECT `force` FROM users WHERE playerToken = ?', [battle.defence]);
-        const defenderForces = (defenderResult[0].force);
+        const [defenderResult] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [battle.defence]);
+        const defender = defenderResult[0];
 
-        // Calculate total attack power for attacker
+        const attackerForces = (attacker.force);
+        const defenderForces = (defender.force);
+
         const totalAttackPower = attackerForces.reduce((total, force) => total + (force.force.attack * force.force.number), 0);
-
-        // Calculate total defense health for defender
         const totalDefenseHealth = defenderForces.reduce((total, force) => total + (force.force.hp * force.force.number), 0);
+        console.log(`Attacker: ${totalAttackPower}`);
+        console.log(`Defender: ${totalDefenseHealth}`);
 
-        // Determine the winner
-        const winner = totalAttackPower > totalDefenseHealth ? 'attacker' : 'defender';
+        let battleReport = `Battle ${battleId} ended. `;
 
-        // Handle casualties
-        if (winner === 'attacker') {
+        let winner;
+        if (totalAttackPower > totalDefenseHealth) {
+            winner = 'attacker';
+            battleReport += 'Attacker won the battle.\n';
+
             // All defender forces wiped out
             defenderForces.forEach(force => {
                 force.force.number = 0;
             });
 
             // Calculate attacker casualties
-            const remainingAttackPower = totalAttackPower - totalDefenseHealth;
+            const remainingAttackPower = totalDefenseHealth; // Total defense health equals total attack power used
             const totalForcePower = attackerForces.reduce((total, force) => total + (force.force.attack * force.force.number), 0);
             attackerForces.forEach(force => {
                 const forcePower = force.force.attack * force.force.number;
                 const casualtyPercentage = forcePower / totalForcePower;
                 const casualties = remainingAttackPower * casualtyPercentage;
+                const initialNumber = force.force.number;
                 force.force.number -= Math.round(casualties / force.force.attack);
                 if (force.force.number < 0) {
                     force.force.number = 0;
                 }
+                battleReport += `${force.force.name} - Initial: ${initialNumber}, Remaining: ${force.force.number}, Casualties: ${initialNumber - force.force.number}\n`;
             });
+
+            // Calculate total raid capacity of surviving attacker forces
+            const totalRaidCapacity = attackerForces.reduce((total, force) => total + (force.force.load * force.force.number), 0);
+
+            // Calculate raid amount for each resource
+            const raidAmounts = {
+                wood: Math.min(defender.wood, totalRaidCapacity / 4),
+                stone: Math.min(defender.stone, totalRaidCapacity / 4),
+                iron: Math.min(defender.iron, totalRaidCapacity / 4),
+                wheat: Math.min(defender.wheat, totalRaidCapacity / 4)
+            };
+
+            // Adjust resources if raid capacity exceeds one type of resource
+            let remainingCapacity = totalRaidCapacity - (raidAmounts.wood + raidAmounts.stone + raidAmounts.iron + raidAmounts.wheat);
+            ['wood', 'stone', 'iron', 'wheat'].forEach(resource => {
+                if (remainingCapacity > 0) {
+                    const additionalRaid = Math.min(defender[resource] - raidAmounts[resource], remainingCapacity);
+                    raidAmounts[resource] += additionalRaid;
+                    remainingCapacity -= additionalRaid;
+                }
+            });
+
+            // Retrieve the attacker's resource capacities
+            const attackerResourceCapacities = {
+                woodCapacity: attacker.woodCapacity,
+                stoneCapacity: attacker.stoneCapacity,
+                ironCapacity: attacker.ironCapacity,
+                wheatCapacity: attacker.wheatCapacity
+            };
+
+            // Deduct raided resources from defender and add to attacker
+            Object.keys(raidAmounts).forEach(resource => {
+                const capacityField = resource + 'Capacity';
+                const attackerCurrentResource = attacker[resource];
+                const capacityRemaining = attackerResourceCapacities[capacityField] - attackerCurrentResource;
+                const raidAmount = Math.min(raidAmounts[resource], capacityRemaining);
+
+                defender[resource] -= raidAmount;
+                attacker[resource] += raidAmount;
+
+                battleReport += `Raided ${resource}: ${raidAmount}\n`;
+            });
+
+            // Update defender and attacker resources in the database
+            await pool.query('UPDATE users SET wood = ?, stone = ?, iron = ?, wheat = ?, `force` = ? WHERE playerToken = ?',
+                [defender.wood, defender.stone, defender.iron, defender.wheat, JSON.stringify(defenderForces), battle.defence]);
+            await pool.query('UPDATE users SET wood = ?, stone = ?, iron = ?, wheat = ?, `force` = ? WHERE playerToken = ?',
+                [attacker.wood, attacker.stone, attacker.iron, attacker.wheat, JSON.stringify(attackerForces), battle.attack]);
         } else {
+            winner = 'defender';
+            battleReport += 'Defender won the battle.\n';
+
             // All attacker forces wiped out
             attackerForces.forEach(force => {
                 force.force.number = 0;
             });
 
             // Calculate defender casualties
-            const remainingDefenseHealth = totalDefenseHealth - totalAttackPower;
+            const remainingDefenseHealth = totalAttackPower; // Total attack power equals total defense health used
             const totalForceHealth = defenderForces.reduce((total, force) => total + (force.force.hp * force.force.number), 0);
             defenderForces.forEach(force => {
                 const forceHealth = force.force.hp * force.force.number;
                 const casualtyPercentage = forceHealth / totalForceHealth;
                 const casualties = remainingDefenseHealth * casualtyPercentage;
+                const initialNumber = force.force.number;
                 force.force.number -= Math.round(casualties / force.force.hp);
                 if (force.force.number < 0) {
                     force.force.number = 0;
                 }
+                battleReport += `${force.force.name} - Initial: ${initialNumber}, Remaining: ${force.force.number}, Casualties: ${initialNumber - force.force.number}\n`;
             });
+
+            // Update attacker forces in the database
+            await pool.query('UPDATE users SET `force` = ? WHERE playerToken = ?',
+                [JSON.stringify(attackerForces), battle.attack]);
+            await pool.query('UPDATE users SET `force` = ? WHERE playerToken = ?',
+                [JSON.stringify(defenderForces), battle.defence]);
         }
 
-        // Update forces in the database
-        await pool.query('UPDATE users SET `force` = ? WHERE playerToken = ?', [JSON.stringify(attackerForces), battle.attack]);
-        await pool.query('UPDATE users SET `force` = ? WHERE playerToken = ?', [JSON.stringify(defenderForces), battle.defence]);
+        battleReport += `Final attacker resources: Wood: ${attacker.wood}, Stone: ${attacker.stone}, Iron: ${attacker.iron}, Wheat: ${attacker.wheat}\n`;
+        battleReport += `Final defender resources: Wood: ${defender.wood}, Stone: ${defender.stone}, Iron: ${defender.iron}, Wheat: ${defender.wheat}\n`;
 
-        // Update battle status in the database
-        await pool.query('UPDATE ongoingwar SET status = ?, winner = ? WHERE battleId = ?', ['completed', winner, battleId]);
+        console.log(battleReport);
+        await pool.query('UPDATE ongoingwar SET result = ? WHERE battleId = ?', [JSON.stringify(battleReport), battleId]);
+        await pool.query('UPDATE ongoingwar SET status = ? WHERE battleId = ?', ["Completed", battleId]);
+        await pool.query('UPDATE ongoingwar SET winner = ? WHERE battleId = ?', [winner, battleId]);
 
-        console.log(`Battle ${battleId} ended. Winner: ${winner}`);
+
     } catch (error) {
         console.error('Error handling battle end:', error);
     }
