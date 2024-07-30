@@ -16,7 +16,9 @@ router.post('/sendMessage', async (req, res) => {
     const { sender, receiver, content } = req.body;
 
     try {
-        await pool.query('INSERT INTO messages (sender ,receiver, content) VALUES (?, ?, ?)', [sender, receiver, JSON.stringify(content)]);
+        const time = new Date();
+        const timer = `h: ${time.getHours()}  m: ${time.getMinutes()}  D:${time.getDate()}  M:${time.getMonth() + 1}  Y:${time.getFullYear()}`;
+        await pool.query('INSERT INTO messages (sender ,receiver, content, timeRT) VALUES (?, ?, ?, ?)', [sender, receiver, JSON.stringify(content), timer]);
         res.status(201).json({ message: 'Send Message successfully' });
 
     } catch (error) {
@@ -30,7 +32,7 @@ router.post('/getMessages', async (req, res) => {
     const { username } = req.body;
 
     try {
-        const [chats] = await pool.query('SELECT * FROM messages WHERE sender OR receiver = ?', [username]);
+        const [chats] = await pool.query('SELECT * FROM messages WHERE sender = ? OR receiver = ?', [username,username]);
         res.status(201).json({ chats });
 
     } catch (error) {

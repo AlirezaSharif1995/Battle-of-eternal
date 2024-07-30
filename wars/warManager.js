@@ -3,7 +3,6 @@ const router = express.Router();
 const mysql = require('mysql2/promise');
 const schedule = require('node-schedule');
 
-
 const pool = mysql.createPool({
     host: 'localhost',
     user: 'root',
@@ -224,7 +223,7 @@ async function handleBattleEnd(battleId) {
 }
 
 router.post('/startWar', async (req, res) => {
-    const { attack, defence } = req.body;
+    const { attack, defence, mode } = req.body;
 
     try {
         // Retrieve attacker data including forces
@@ -252,7 +251,8 @@ router.post('/startWar', async (req, res) => {
 
         // Set a fixed travel time of 20 seconds for testing
         const travelTime = 20 / 60; // Convert seconds to minutes
-
+        const time = new Date();
+        const timer = `h: ${time.getHours()}  m: ${time.getMinutes()}  D:${time.getDate()}  M:${time.getMonth() + 1}  Y:${time.getFullYear()}`;
         // Save the ongoing war information in the database
         const [result] = await pool.query(
             'INSERT INTO ongoingwar (attack, defence, distance, travelTime, startTime, status) VALUES (?, ?, ?, ?, NOW(), ?)',
@@ -265,7 +265,22 @@ router.post('/startWar', async (req, res) => {
         schedule.scheduleJob(new Date(Date.now() + travelTimeInMillis), () => handleBattleEnd(battleId));
 
         // Send the distance and travel time in the response
-        res.status(200).json({ distance, travelTime, battleId });
+        res.status(200).json({ distance, travelTime, battleId, timer });
+
+    } catch (error) {
+        console.error('Error start War:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.post('/warResult', async (req, res) => {
+    const { playerToken } = req.body;
+    try {
+        const [attackerResult] = await pool.query('SELECT * FROM ongoingwar WHERE attack = ? OR defence = ?', [playerToken, playerToken]);
+        if (attackerResult.length == 0) {
+            return res.status(202).json({ message: 'War not found' });
+        }
+        return res.status(202).json({ attackerResult });
 
     } catch (error) {
         console.error('Error start War:', error);
