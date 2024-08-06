@@ -32,7 +32,7 @@ router.post('/getMessages', async (req, res) => {
     const { username } = req.body;
 
     try {
-        const [chats] = await pool.query('SELECT * FROM messages WHERE sender = ? OR receiver = ?', [username,username]);
+        const [chats] = await pool.query('SELECT * FROM messages WHERE sender = ? OR receiver = ?', [username, username]);
         res.status(201).json({ chats });
 
     } catch (error) {
@@ -59,5 +59,30 @@ router.post('/getClanMessages', async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
+
+router.post('/deleteMessage', async (req, res) => {
+    const { id } = req.body;
+
+    try {
+        await pool.query('DELETE FROM messages WHERE id = ?', [id]);
+        res.status(200).json({ message: `Message with id: ${id} deleted successfully` });
+    } catch (error) {
+        console.error('Error deleting message:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.post('/readMessage', async (req, res) => {
+    const { id } = req.body;
+
+    try {
+        await pool.query('UPDATE messages SET `read` = ? WHERE id = ?', [1, id]);
+        res.status(200).json({ message: `Message with id: ${id} updated successfully` });
+    } catch (error) {
+        console.error('Error reading message:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 
 module.exports = router;

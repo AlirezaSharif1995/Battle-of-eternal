@@ -11,12 +11,12 @@
   "license": "ISC",
   "dependencies": {
     "agenda": "^5.0.0",
+    "axios": "^1.7.3",
     "bcrypt": "^5.1.1",
     "bcryptjs": "^2.4.3",
+    "body-parser": "^1.20.2",
     "dotenv": "^16.4.5",
     "ethers": "^6.13.1",
-    "body-parser": "^1.20.2",
-    "sharp": "^0.33.4",
     "express": "^4.19.2",
     "mailgun-js": "^0.6.7",
     "mailgun.js": "^10.2.1",
@@ -29,6 +29,7 @@
     "nodemailer": "^6.9.13",
     "nodemon": "^3.1.0",
     "pm2": "^5.3.1",
+    "sharp": "^0.33.4",
     "socket.io": "^4.7.5",
     "web3": "^4.9.0"
   }

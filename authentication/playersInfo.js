@@ -127,7 +127,7 @@ router.post('/getPlayerBorder', async (req, res) => {
             civilization: existingUser[0].civilization,
             allPopulation: existingUser[0].allPopulation,
             users: existingUser[0].users
-        } 
+        }
         res.status(201).json({ user });
 
     } catch (error) {
@@ -175,6 +175,26 @@ router.post('/getCityPos', async (req, res) => {
         console.error(error);
         res.status(500).json({ message: 'Internal server error' });
     }
+});
+
+router.post('/getPlayerInfoUsername', async (req, res) => {
+    const { username } = req.body;
+
+    try {
+        const [existingUser] = await pool.query('SELECT * FROM users WHERE username = ?', [username]);
+
+        if (existingUser.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        res.status(200).json({ existingUser });
+
+        
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+
 });
 
 function generateRandomToken() {

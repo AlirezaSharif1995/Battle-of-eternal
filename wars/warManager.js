@@ -275,15 +275,45 @@ router.post('/startWar', async (req, res) => {
 
 router.post('/warResult', async (req, res) => {
     const { playerToken } = req.body;
+
     try {
-        const [attackerResult] = await pool.query('SELECT * FROM ongoingwar WHERE attack = ? OR defence = ?', [playerToken, playerToken]);
-        if (attackerResult.length == 0) {
-            return res.status(202).json({ message: 'War not found' });
+        const [attackerResults] = await pool.query(
+            'SELECT * FROM ongoingwar WHERE attack = ? OR defence = ?',
+            [playerToken, playerToken]
+        );
+
+        if (attackerResults.length === 0) {
+            return res.status(404).json({ message: 'War not found' });
         }
-        return res.status(202).json({ attackerResult });
+
+        const playerInfoPromises = attackerResults.map(async result => {
+            const [attackerCity] = await pool.query('SELECT cityName FROM users WHERE playerToken = ?', [result.attack]);
+            const [defenderCity] = await pool.query('SELECT cityName FROM users WHERE playerToken = ?', [result.defence]);
+            return {
+                ...result,
+                attackerCity: attackerCity.length > 0 ? attackerCity[0].cityName : null,
+                defenderCity: defenderCity.length > 0 ? defenderCity[0].cityName : null,
+            };
+        });
+
+        const warDetailsWithCities = await Promise.all(playerInfoPromises);
+
+        res.status(200).json(warDetailsWithCities);
 
     } catch (error) {
-        console.error('Error start War:', error);
+        console.error('Error fetching war results:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.post('/deleteWar', async (req, res) => {
+    const { battleId } = req.body;
+
+    try {
+        await pool.query('DELETE FROM ongoingwar WHERE battleId = ?', [battleId]);
+        res.status(200).json({ message: `War with battleId: ${battleId} deleted successfully` });
+    } catch (error) {
+        console.error('Error deleting War:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

@@ -38,7 +38,7 @@ router.post('/leave', async (req, res) => {
     }
 });
 
-router.get('/clanInfo', async (req, res) => {
+router.post('/clanInfo', async (req, res) => {
     const { clan_id } = req.body;
     try {
         const [clan] = await pool.query('SELECT * FROM clans WHERE id = ?', [clan_id]);

@@ -23,7 +23,7 @@ router.get('/clanMembers', async (req, res) => {
     }
 });
 
-router.get('/clanPopulation', async (req, res) => {
+router.post('/clanPopulation', async (req, res) => {
 
     try {
         const { clan_id } = req.body;
@@ -38,12 +38,43 @@ router.get('/clanPopulation', async (req, res) => {
     }
 });
 
-router.get('/allPlayerPopulation', async (req, res) => {
+router.post('/clanRanking', async (req, res) => {
+    try {
+        // Query to calculate total population for each clan, including avatarCode, and order by total population
+        const [topClans] = await pool.query(
+            `SELECT c.id AS clan_id, c.name AS clan_name, c.avatarCode AS clan_avatar, COALESCE(SUM(u.population), 0) AS total_population
+             FROM clans c
+             LEFT JOIN users u ON c.id = u.clan_id
+             GROUP BY c.id, c.name, c.avatarCode
+             ORDER BY total_population DESC
+             LIMIT 10`
+        );
 
+        res.json(topClans);
+    } catch (error) {
+        console.error("Error fetching clan rankings:", error);
+        res.status(500).send('Internal Server Error');
+    }
+});
+
+
+
+router.get('/allPlayerPopulation', async (req, res) => {
     try {
         const [players] = await pool.query(
             'SELECT username, avatarCode, cities, clan_id, population FROM users ORDER BY population DESC LIMIT 100'
         );
+
+        // Fetch clan names for each player
+        for (const player of players) {
+            const [clan] = await pool.query('SELECT name FROM clans WHERE id = ?', [player.clan_id]);
+            if (clan.length > 0) {
+                player.clanName = clan[0].name;
+            } else {
+                player.clanName = null;
+            }
+        }
+
         res.send(players);
     } catch (error) {
         console.error(error);
