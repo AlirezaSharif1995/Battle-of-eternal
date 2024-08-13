@@ -29,17 +29,27 @@ router.post('/sendMessage', async (req, res) => {
 });
 
 router.post('/getMessages', async (req, res) => {
-    const { username } = req.body;
+    const { playerToken } = req.body;
 
     try {
-        const [chats] = await pool.query('SELECT * FROM messages WHERE sender = ? OR receiver = ?', [username, username]);
-        res.status(201).json({ chats });
+        const [userResult] = await pool.query('SELECT username, avatarCode FROM users WHERE token = ?', [playerToken]);
+
+        if (userResult.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const { username, avatarCode } = userResult[0];
+
+        // Retrieve chats involving the user
+        const [chats] = await pool.query('SELECT * FROM messages WHERE sender = ? OR receiver = ?', [playerToken, playerToken]);
+
+        // Respond with the chats and user information
+        res.status(201).json({ chats, username, avatarCode });
 
     } catch (error) {
         console.error('Error getMessages:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
-
 });
 
 router.post('/getClanMessages', async (req, res) => {
