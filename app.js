@@ -7,7 +7,7 @@ const socket01 = require('./Sockets/socket01');
 const { registrationRouter, loginRouter, forgetPassword, playerInfo } = require('./authentication');
 const { building, playerResources, reportHandler, prize } = require('./playerResoureces');
 const { createAlliance, allianceManager } = require('./Alliance');
-const { wheatManager, contracts } = require('./blockchainManager');
+const { wheatManager, contracts, NFT } = require('./blockchainManager');
 const { warManager } = require('./wars');
 const { messages } = require('./Message');
 
@@ -31,6 +31,7 @@ app.use('/blockchainManager/wheatManager', wheatManager);
 app.use('/transition', transition);
 app.use('/contracts', contracts);
 app.use('/warManager', warManager);
+app.use('/NFT', NFT);
 //app.use('/prize', prize);
 app.use("/messages",messages);
 

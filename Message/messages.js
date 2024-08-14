@@ -32,19 +32,45 @@ router.post('/getMessages', async (req, res) => {
     const { playerToken } = req.body;
 
     try {
-        const [userResult] = await pool.query('SELECT username, avatarCode FROM users WHERE token = ?', [playerToken]);
+        // Retrieve the user based on playerToken
+        const [userResult] = await pool.query('SELECT playerToken FROM users WHERE playerToken = ?', [playerToken]);
 
         if (userResult.length === 0) {
             return res.status(404).json({ error: 'User not found' });
         }
 
-        const { username, avatarCode } = userResult[0];
+        const userId = userResult[0].playerToken;
 
         // Retrieve chats involving the user
-        const [chats] = await pool.query('SELECT * FROM messages WHERE sender = ? OR receiver = ?', [playerToken, playerToken]);
+        const [chats] = await pool.query('SELECT * FROM messages WHERE sender = ? OR receiver = ?', [userId, userId]);
 
-        // Respond with the chats and user information
-        res.status(201).json({ chats, username, avatarCode });
+        // If no chats found, return an empty array
+        if (chats.length === 0) {
+            return res.status(200).json({ chats: [] });
+        }
+
+        // Loop through each chat to get sender and receiver information
+        const formattedChats = await Promise.all(chats.map(async (chat) => {
+            const [senderResult] = await pool.query('SELECT username, avatarCode FROM users WHERE playerToken = ?', [chat.sender]);
+            const [receiverResult] = await pool.query('SELECT username, avatarCode FROM users WHERE playerToken = ?', [chat.receiver]);
+
+            return {
+                sender: {
+                    playerToken: chat.sender,
+                    username: senderResult[0].username,
+                    avatarCode: senderResult[0].avatarCode
+                },
+                receiver: {
+                    playerToken: chat.receiver,
+                    username: receiverResult[0].username,
+                    avatarCode: receiverResult[0].avatarCode
+                },
+                content: chat.content
+            };
+        }));
+
+        // Respond with the formatted chats
+        res.status(201).json({ chats: formattedChats });
 
     } catch (error) {
         console.error('Error getMessages:', error);

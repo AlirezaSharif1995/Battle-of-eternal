@@ -4,6 +4,7 @@ const axios = require('axios');
 const mysql = require('mysql2/promise');
 const router = express.Router();
 
+// MySQL pool configuration
 const pool = mysql.createPool({
     host: 'localhost',
     user: 'root',
@@ -14,112 +15,135 @@ const pool = mysql.createPool({
     queueLimit: 0
 });
 
-// Polygon (Matic) Mainnet URL
+// Polygon (Matic) Mainnet provider
 const provider = new ethers.JsonRpcProvider('https://polygon-rpc.com');
 
-// Your wallet's private key
-//const privateKey = 'b79f301e8866616a169e9560bff066a1b2658ef77680b377dbcbd753510a4504';
+// Your wallet's private key and wallet instance
 const privateKey = '1b5cb5b41a466ec646ad7805e4a41119a7cc962dd52f88a6fbe38395de78a4f7';
 const wallet = new ethers.Wallet(privateKey, provider);
+
+// Etherscan API key
 const ETHERSCAN_API_KEY = '91U41DHI52UNTS6AF683X5T1KA5PEJU9ZQ';
 
-// Addresses
-const senderAddress = '0xA63A1e606F193F7F345D468eF53321C00156E246';
-// const senderAddress = '0x348B3Bc4D25FbfEdD46647b433920F3f5AE61d9d';
+// USDT contract address and ABI
+const usdtAddress = '0xc2132d05d31c914a87c6611c10748aeb04b58e8f';
+const USDT_ABI = [
+    "function balanceOf(address account) view returns (uint256)",
+    "function transfer(address to, uint256 amount) returns (bool)",
+    "event Transfer(address indexed from, address indexed to, uint256 value)"
+];
+
+// ABI for ERC-20 transfer function
+const transferABI = [
+    "function transfer(address to, uint256 amount) returns (bool)"
+];
+
+const usdtInterface = new ethers.Interface(transferABI);
 
 // Middleware to parse JSON requests
 router.use(express.json());
 
+// Route to send USDT transaction
 router.post('/send-transaction', async (req, res) => {
-    const { recipientAddress } = req.body;
+    const { recipientAddress, amount } = req.body;
+
     try {
-        // Check balance
-        const balance = await provider.getBalance(senderAddress);
-        console.log(`Balance of sender address: ${ethers.formatEther(balance)} MATIC`);
+        const usdtContract = new ethers.Contract(usdtAddress, USDT_ABI, wallet);
 
-        if (ethers.formatEther(balance) > 0.1) {  // Ensure balance is sufficient for sending 0.1 MATIC
-            // Get the current nonce
-            const nonce = await provider.getTransactionCount(senderAddress, 'latest');
+        // Check sender's USDT balance
+        const balance = await usdtContract.balanceOf(wallet.address);
+        console.log(`Balance of sender address: ${ethers.formatUnits(balance, 6)} USDT`);
 
-            // Build the transaction
-            const tx = {
-                to: recipientAddress,
-                value: ethers.parseEther("0.1"),  // Send 0.1 MATIC
-                gasLimit: 21000,  // Standard gas limit for a simple transfer
-                gasPrice: ethers.parseUnits('50', 'gwei'),  // Adjust gas price as needed
-                nonce: nonce,
-                chainId: 137  // Polygon (Matic) Mainnet chain ID
-            };
+        const amountInWei = ethers.parseUnits(amount.toString(), 6);
 
-            // Sign and send the transaction
-            const txResponse = await wallet.sendTransaction(tx);
-            console.log("Transaction sent. Transaction hash:", txResponse.hash);
+        // Send USDT transaction
+        const txResponse = await usdtContract.transfer(recipientAddress, amountInWei);
+        console.log("Transaction sent. Transaction hash:", txResponse.hash);
 
-            // Wait for the transaction to be mined
-            const receipt = await txResponse.wait();
-            console.log("Transaction mined:", receipt);
+        const receipt = await txResponse.wait();
+        console.log("Transaction mined:", receipt);
 
-            res.json({ success: true, txHash: txResponse.hash, receipt });
-        } else {
-            console.log("Insufficient funds in sender's address");
-            res.json({ success: false, message: "Insufficient funds" });
-        }
+        res.json({ success: true, txHash: txResponse.hash, receipt });
     } catch (error) {
         console.error("Transaction failed:", error);
         res.json({ success: false, error: error.message });
     }
 });
 
+// Route to get USDT and MATIC balance
 router.post('/getBalance', async (req, res) => {
-    const { senderAddress } = req.body;
+    const { address } = req.body;
+
     try {
-        // Check balance
-        const balance = await provider.getBalance(senderAddress);
-        const formattedBalance = ethers.formatEther(balance);
-        console.log(`Balance of sender address: ${formattedBalance} MATIC`);
-        res.json({ balance: `${formattedBalance} MATIC` });
+        const usdtContract = new ethers.Contract(usdtAddress, USDT_ABI, provider);
+
+        // Check USDT balance
+        const usdtBalance = await usdtContract.balanceOf(address);
+        const formattedUSDTBalance = ethers.formatUnits(usdtBalance, 6);
+
+        // Check MATIC balance
+        const maticBalance = await provider.getBalance(address);
+        const formattedMATICBalance = ethers.formatEther(maticBalance);
+
+        console.log(`Balance of address: ${formattedUSDTBalance} USDT, ${formattedMATICBalance} MATIC`);
+
+        res.json({
+            success: true,
+            usdtBalance: `${formattedUSDTBalance} USDT`,
+            maticBalance: `${formattedMATICBalance} MATIC`
+        });
     } catch (error) {
         console.error("getBalance failed:", error);
         res.json({ success: false, error: error.message });
     }
 });
 
+// Route to check recent transactions
 router.post('/checkTransition', async (req, res) => {
-    const { address, targetWallet } = req.body;
+    const { address, playerToken } = req.body;
 
     try {
-        // Fetch the last 5 transactions using Etherscan API
         const etherscanUrl = `https://api.polygonscan.com/api?module=account&action=txlist&address=${address}&startblock=0&endblock=99999999&sort=desc&apikey=${ETHERSCAN_API_KEY}`;
-
         const response = await axios.get(etherscanUrl);
 
         if (response.data.status !== '1' || !response.data.result) {
             return res.json({ success: false, message: "Unable to fetch transactions" });
         }
 
-        const transactions = response.data.result;
-        const lastFiveTransactions = transactions.slice(0, 5);
+        const transactions = response.data.result.slice(0, 5);
+        const myWalletAdress = "0xEcedFD0c8750c36520B595EF4A247bbD47FcBDcA";
 
-        // Check for matching transactions
-        for (const tx of lastFiveTransactions) {
-            const hash = tx.hash;
+        for (const tx of transactions) {
 
-            // Check if the hash exists in the database
-            const [rows] = await pool.query('SELECT hash FROM transactions WHERE hash = ?', [hash]);
+            if (tx.input.startsWith('0xa9059cbb')) { // Check for ERC-20 transfer method ID
+                try {
+                    const decoded = usdtInterface.decodeFunctionData('transfer', tx.input);
+                    const recipient = decoded.to;
+                    const amount = ethers.formatUnits(decoded.amount, 6); // USDT has 6 decimals
+                    const hash = tx.hash;
 
-            if (rows.length > 0) {
-                // Hash already exists in the database
-                continue;
+                    console.log('Decoded Transfer Data:', { hash ,recipient, amount });
+
+                    const [rows] = await pool.query('SELECT hash FROM transactions WHERE hash = ?', [tx.hash]);
+                    if (rows.length > 0) {
+                        continue; // Skip if already recorded
+                    }
+                    if (recipient != myWalletAdress) {
+                        continue; // Skip if already recorded
+                    }
+                    const contract = await determineContract(amount, playerToken);
+
+                    await pool.query(
+                        'INSERT INTO transactions (hash, gemAmount, price) VALUES (?, ?, ?)',
+                        [tx.hash, contract.gemAmount, contract.price]
+                    );
+
+                    res.json({ success: true, message: "New transaction recorded", hash: tx.hash });
+                    return;
+                } catch (error) {
+                    console.error('Error decoding input data:', error);
+                }
             }
-
-            // Hash does not exist, determine the contract and insert it
-            const value = ethers.formatEther(tx.value);
-            const contract = determineContract(value);
-
-            await pool.query('INSERT INTO transactions (hash, contract) VALUES (?, ?)', [hash, contract]);
-
-            res.json({ success: true, message: "New transaction recorded", hash, contract });
-            return;
         }
 
         res.json({ success: false, message: "No new matching transactions found" });
@@ -129,14 +153,44 @@ router.post('/checkTransition', async (req, res) => {
     }
 });
 
-function determineContract(value) {
-    // Implement your logic to determine the contract based on the value
-    // For example:
-    if (parseFloat(value) > 1) {
-        return 'HighValueContract';
-    } else {
-        return 'LowValueContract';
+// Determine contract based on value in USDT
+async function determineContract(valueInUSDT, playerToken) {
+    const priceTiers = [
+        { gem: 100, price: 0.99 },
+        { gem: 500, price: 4.99 },
+        { gem: 1200, price: 9.99 },
+        { gem: 2600, price: 19.99 },
+        { gem: 7000, price: 49.99 },
+        { gem: 15000, price: 99.99 }
+    ];
+
+    for (const tier of priceTiers) {
+        if (Math.abs(valueInUSDT - tier.price) < 0.001) {  // Tolerance for floating-point precision
+
+            const [userRows] = await pool.query('SELECT Gem FROM users WHERE playerToken = ?', [playerToken]);
+            if (userRows.length === 0) {
+                return res.json({ success: false, message: "User not found" });
+            }
+
+            const currentGems = userRows[0].Gem;
+            const newGems = currentGems + tier.gem; // Adjust this logic if needed
+
+            // Insert transaction details including new columns
+            await pool.query(
+                'UPDATE users SET Gem = ? WHERE playerToken = ?',
+                [newGems, playerToken]
+            ); return {
+                gemAmount: tier.gem,
+                price: tier.price
+            };
+        }
     }
+
+    return {
+        contractType: 'UnknownContract',
+        gemAmount: 0,
+        price: 0
+    };
 }
 
 module.exports = router;
