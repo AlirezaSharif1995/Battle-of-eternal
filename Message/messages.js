@@ -29,10 +29,11 @@ router.post('/sendMessage', async (req, res) => {
 });
 
 router.post('/getMessages', async (req, res) => {
-    const { playerToken } = req.body;
 
     try {
         // Retrieve the user based on playerToken
+        const { playerToken } = req.body;
+
         const [userResult] = await pool.query('SELECT playerToken FROM users WHERE playerToken = ?', [playerToken]);
 
         if (userResult.length === 0) {
