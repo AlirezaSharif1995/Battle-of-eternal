@@ -12,7 +12,7 @@ const pool = mysql.createPool({
     queueLimit: 0
 });
 
-router.get('/', async (req, res) => {
+router.post('/', async (req, res) => {
     const { playerToken } = req.body;
     try {
         const [player] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [playerToken]);

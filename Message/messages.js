@@ -28,6 +28,22 @@ router.post('/sendMessage', async (req, res) => {
 
 });
 
+router.post('/sendMessageClan', async (req, res) => {
+    const { sender, clan, content } = req.body;
+
+    try {
+        const time = new Date();
+        const timer = `h: ${time.getHours()}  m: ${time.getMinutes()}  D:${time.getDate()}  M:${time.getMonth() + 1}  Y:${time.getFullYear()}`;
+        await pool.query('INSERT INTO messages (sender ,clan, content, timeRT) VALUES (?, ?, ?, ?)', [sender, clan, JSON.stringify(content), timer]);
+        res.status(201).json({ message: 'Send Message successfully' });
+
+    } catch (error) {
+        console.error('Error sendMessage:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+
+});
+
 router.post('/getMessages', async (req, res) => {
 
     try {
@@ -66,7 +82,9 @@ router.post('/getMessages', async (req, res) => {
                     username: receiverResult[0].username,
                     avatarCode: receiverResult[0].avatarCode
                 },
-                content: chat.content
+                content: chat.content,
+                time: chat.timeRT,
+                id: chat.id
             };
         }));
 
@@ -83,14 +101,34 @@ router.post('/getClanMessages', async (req, res) => {
     const { clan } = req.body;
 
     try {
+        // Retrieve chats involving the clan
         const [chats] = await pool.query(`
-            SELECT m.*, u.avatarCode 
+            SELECT m.*, u.username, u.avatarCode 
             FROM messages m
-            LEFT JOIN users u ON m.sender = u.username
+            LEFT JOIN users u ON m.sender = u.playerToken
             WHERE m.clan = ?
         `, [clan]);
 
-        res.status(201).json({ chats });
+        // If no chats found, return an empty array
+        if (chats.length === 0) {
+            return res.status(200).json({ chats: [] });
+        }
+
+        // Format the chat messages to include sender information
+        const formattedChats = chats.map(chat => ({
+            sender: {
+                playerToken: chat.sender,
+                username: chat.username,
+                avatarCode: chat.avatarCode
+            },
+            content: chat.content,
+            time: chat.timeRT,
+            id: chat.id
+        }));
+
+        // Respond with the formatted chats
+        res.status(201).json({ chats: formattedChats });
+
     } catch (error) {
         console.error('Error getClanMessages:', error);
         res.status(500).json({ error: 'Internal server error' });

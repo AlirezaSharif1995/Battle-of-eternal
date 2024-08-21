@@ -95,39 +95,64 @@ async function handleBattleEnd(battleId) {
         const [defenderResult] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [battle.defence]);
         const defender = defenderResult[0];
 
-        const attackerForces = (attacker.force);
-        const defenderForces = (defender.force);
+        const attackerForces = attacker.force ? attacker.force : [];
+        const defenderForces = defender.defence ? defender.defence : [];
 
-        const totalAttackPower = attackerForces.reduce((total, force) => total + (force.force.attack * force.force.number), 0);
-        const totalDefenseHealth = defenderForces.reduce((total, force) => total + (force.force.hp * force.force.number), 0);
-        console.log(`Attacker: ${totalAttackPower}`);
-        console.log(`Defender: ${totalDefenseHealth}`);
+        if (!Array.isArray(attackerForces) || !Array.isArray(defenderForces)) {
+            console.error('Invalid forces data for attacker or defender.');
+            return;
+        }
+
+        // Calculate total attack and defense power excluding Spies
+        const totalAttackPower = attackerForces.reduce((total, force) => {
+            if (force.force.name !== 'Spy') {
+                return total + (force.force.attack * force.force.number);
+            }
+            return total;
+        }, 0);
+
+        const totalDefensePower = defenderForces.reduce((total, unit) => {
+            if (unit.force.name !== 'Spy') {
+                return total + (unit.force.defence * unit.force.number);
+            }
+            return total;
+        }, 0);
+
+        console.log(`Attacker total attack power: ${totalAttackPower}`);
+        console.log(`Defender total defense power: ${totalDefensePower}`);
 
         let battleReport = `Battle ${battleId} ended. `;
-
         let winner;
-        if (totalAttackPower > totalDefenseHealth) {
+
+        if (totalAttackPower > totalDefensePower) {
             winner = 'attacker';
             battleReport += 'Attacker won the battle.\n';
 
-            // All defender forces wiped out
-            defenderForces.forEach(force => {
-                force.force.number = 0;
+            // All defender forces wiped out (excluding Spies)
+            defenderForces.forEach(unit => {
+                if (unit.force.name !== 'Spy') {
+                    unit.force.number = 0;
+                }
             });
 
             // Calculate attacker casualties
-            const remainingAttackPower = totalDefenseHealth; // Total defense health equals total attack power used
-            const totalForcePower = attackerForces.reduce((total, force) => total + (force.force.attack * force.force.number), 0);
+            const remainingAttackPower = totalDefensePower; // Total defense power equals total attack power used
+            const totalForcePower = attackerForces.reduce((total, force) => force.force.name !== 'Spy' ? total + (force.force.attack * force.force.number) : total, 0);
+
             attackerForces.forEach(force => {
-                const forcePower = force.force.attack * force.force.number;
-                const casualtyPercentage = forcePower / totalForcePower;
-                const casualties = remainingAttackPower * casualtyPercentage;
-                const initialNumber = force.force.number;
-                force.force.number -= Math.round(casualties / force.force.attack);
-                if (force.force.number < 0) {
-                    force.force.number = 0;
+                if (force.force.name !== 'Spy') {
+                    const forcePower = force.force.attack * force.force.number;
+                    const casualtyPercentage = forcePower / totalForcePower;
+                    const casualties = remainingAttackPower * casualtyPercentage;
+                    const initialNumber = force.force.number;
+                    force.force.number -= Math.round(casualties / force.force.attack);
+
+                    if (force.force.number < 0) {
+                        force.force.number = 0;
+                    }
+
+                    battleReport += `${force.force.name} - Initial: ${initialNumber}, Remaining: ${force.force.number}, Casualties: ${initialNumber - force.force.number}\n`;
                 }
-                battleReport += `${force.force.name} - Initial: ${initialNumber}, Remaining: ${force.force.number}, Casualties: ${initialNumber - force.force.number}\n`;
             });
 
             // Calculate total raid capacity of surviving attacker forces
@@ -173,38 +198,46 @@ async function handleBattleEnd(battleId) {
             });
 
             // Update defender and attacker resources in the database
-            await pool.query('UPDATE users SET wood = ?, stone = ?, iron = ?, wheat = ?, `force` = ? WHERE playerToken = ?',
+            await pool.query('UPDATE users SET wood = ?, stone = ?, iron = ?, wheat = ?, defence = ? WHERE playerToken = ?',
                 [defender.wood, defender.stone, defender.iron, defender.wheat, JSON.stringify(defenderForces), battle.defence]);
             await pool.query('UPDATE users SET wood = ?, stone = ?, iron = ?, wheat = ?, `force` = ? WHERE playerToken = ?',
                 [attacker.wood, attacker.stone, attacker.iron, attacker.wheat, JSON.stringify(attackerForces), battle.attack]);
+
         } else {
             winner = 'defender';
             battleReport += 'Defender won the battle.\n';
 
-            // All attacker forces wiped out
+            // All attacker forces wiped out (excluding Spies)
             attackerForces.forEach(force => {
-                force.force.number = 0;
+                if (force.force.name !== 'Spy') {
+                    force.force.number = 0;
+                }
             });
 
             // Calculate defender casualties
             const remainingDefenseHealth = totalAttackPower; // Total attack power equals total defense health used
-            const totalForceHealth = defenderForces.reduce((total, force) => total + (force.force.hp * force.force.number), 0);
-            defenderForces.forEach(force => {
-                const forceHealth = force.force.hp * force.force.number;
-                const casualtyPercentage = forceHealth / totalForceHealth;
-                const casualties = remainingDefenseHealth * casualtyPercentage;
-                const initialNumber = force.force.number;
-                force.force.number -= Math.round(casualties / force.force.hp);
-                if (force.force.number < 0) {
-                    force.force.number = 0;
+            const totalForceHealth = defenderForces.reduce((total, unit) => unit.force.name !== 'Spy' ? total + (unit.force.hp * unit.force.number) : total, 0);
+
+            defenderForces.forEach(unit => {
+                if (unit.force.name !== 'Spy') {
+                    const forceHealth = unit.force.hp * unit.force.number;
+                    const casualtyPercentage = forceHealth / totalForceHealth;
+                    const casualties = remainingDefenseHealth * casualtyPercentage;
+                    const initialNumber = unit.force.number;
+                    unit.force.number -= Math.round(casualties / unit.force.hp);
+
+                    if (unit.force.number < 0) {
+                        unit.force.number = 0;
+                    }
+
+                    battleReport += `${unit.force.name} - Initial: ${initialNumber}, Remaining: ${unit.force.number}, Casualties: ${initialNumber - unit.force.number}\n`;
                 }
-                battleReport += `${force.force.name} - Initial: ${initialNumber}, Remaining: ${force.force.number}, Casualties: ${initialNumber - force.force.number}\n`;
             });
 
             // Update attacker forces in the database
             await pool.query('UPDATE users SET `force` = ? WHERE playerToken = ?',
                 [JSON.stringify(attackerForces), battle.attack]);
-            await pool.query('UPDATE users SET `force` = ? WHERE playerToken = ?',
+            await pool.query('UPDATE users SET `defence` = ? WHERE playerToken = ?',
                 [JSON.stringify(defenderForces), battle.defence]);
         }
 
@@ -212,13 +245,123 @@ async function handleBattleEnd(battleId) {
         battleReport += `Final defender resources: Wood: ${defender.wood}, Stone: ${defender.stone}, Iron: ${defender.iron}, Wheat: ${defender.wheat}\n`;
 
         console.log(battleReport);
-        await pool.query('UPDATE ongoingwar SET result = ? WHERE battleId = ?', [JSON.stringify(battleReport), battleId]);
-        await pool.query('UPDATE ongoingwar SET status = ? WHERE battleId = ?', ["Completed", battleId]);
-        await pool.query('UPDATE ongoingwar SET winner = ? WHERE battleId = ?', [winner, battleId]);
 
+        await pool.query('UPDATE ongoingwar SET result = ?, status = "Completed", winner = ? WHERE battleId = ?',
+            [JSON.stringify(battleReport), winner, battleId]);
 
     } catch (error) {
         console.error('Error handling battle end:', error);
+    }
+}
+
+async function handleSpyBattleEnd(battleId) {
+    try {
+        const [ongoingWarResult] = await pool.query('SELECT * FROM ongoingwar WHERE battleId = ?', [battleId]);
+        const battle = ongoingWarResult[0];
+
+        if (!battle) {
+            console.error(`Battle with ID ${battleId} not found.`);
+            return;
+        }
+
+        const [attackerResult] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [battle.attack]);
+        const attacker = attackerResult[0];
+
+        const [defenderResult] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [battle.defence]);
+        const defender = defenderResult[0];
+
+        const attackerForces = attacker.force ? attacker.force : [];
+        const defenderForces = defender.defence ? defender.defence : [];
+
+        if (!Array.isArray(attackerForces) || !Array.isArray(defenderForces)) {
+            console.error('Invalid forces data for attacker or defender.');
+            return;
+        }
+
+        // Filter only Spy units
+        const attackerSpies = attackerForces.filter(force => force.force.name === 'Spy');
+        const defenderSpies = defenderForces.filter(force => force.force.name === 'Spy');
+
+        if (attackerSpies.length === 0 || defenderSpies.length === 0) {
+            console.error('One side has no spies, so no spy battle can occur.');
+            return;
+        }
+
+        // Calculate total attack and defense power for spies
+        const totalAttackerSpyPower = attackerSpies.reduce((total, spy) => total + (spy.force.attack * spy.force.number), 0);
+        const totalDefenderSpyPower = defenderSpies.reduce((total, spy) => total + (spy.force.defence * spy.force.number), 0);
+
+        console.log(`Attacker total spy power: ${totalAttackerSpyPower}`);
+        console.log(`Defender total spy power: ${totalDefenderSpyPower}`);
+
+        let spyBattleReport = `Spy Battle ${battleId} ended. `;
+        let winner;
+
+        if (totalAttackerSpyPower > totalDefenderSpyPower) {
+            winner = 'attacker';
+            spyBattleReport += 'Attacker won the spy battle.\n';
+
+            // Wipe out defender spies
+            defenderSpies.forEach(spy => {
+                spy.force.number = 0;
+            });
+
+            // Provide intelligence to the attacker
+            spyBattleReport += `Attacker obtained intelligence:\n`;
+
+            // Resources information
+            spyBattleReport += `Defender resources - Wood: ${defender.wood}, Stone: ${defender.stone}, Iron: ${defender.iron}, Wheat: ${defender.wheat}\n`;
+
+            // Defense forces information
+            spyBattleReport += `Defender forces: ${JSON.stringify(defenderForces)}\n`;
+
+            // Retrieve building information
+            const [buildingsResult] = await pool.query('SELECT * FROM userbuildings WHERE playerToken = ?', [battle.defence]);
+            spyBattleReport += `Defender buildings: ${JSON.stringify(buildingsResult)}\n`;
+
+        } else {
+            winner = 'defender';
+            spyBattleReport += 'Defender won the spy battle.\n';
+
+            // Wipe out attacker spies
+            attackerSpies.forEach(spy => {
+                spy.force.number = 0;
+            });
+        }
+
+        // Update spy numbers in the database
+        attackerForces.forEach(force => {
+            if (force.force.name === 'Spy') {
+                const updatedSpy = attackerSpies.find(spy => spy.force.name === force.force.name);
+                if (updatedSpy) {
+                    force.force.number = updatedSpy.force.number;
+                }
+            }
+        });
+
+        defenderForces.forEach(force => {
+            if (force.force.name === 'Spy') {
+                const updatedSpy = defenderSpies.find(spy => spy.force.name === force.force.name);
+                if (updatedSpy) {
+                    force.force.number = updatedSpy.force.number;
+                }
+            }
+        });
+
+        // Update the database with new force numbers
+        await pool.query('UPDATE users SET `force` = ? WHERE playerToken = ?', 
+            [JSON.stringify(attackerForces), battle.attack]);
+        await pool.query('UPDATE users SET `defence` = ? WHERE playerToken = ?', 
+            [JSON.stringify(defenderForces), battle.defence]);
+
+        // Update the ongoing war table with the result and winner
+        await pool.query('UPDATE ongoingwar SET result = ?, status = "Completed", winner = ? WHERE battleId = ?', 
+            [JSON.stringify(spyBattleReport), winner, battleId]);
+
+        console.log(spyBattleReport);
+
+    } catch (error) {
+        console.error('Error handling spy battle end:', error);
     }
 }
 
@@ -250,7 +393,7 @@ router.post('/startWar', async (req, res) => {
         );
 
         // Set a fixed travel time of 20 seconds for testing
-        const travelTime = 20 / 60; // Convert seconds to minutes
+        const travelTime = 10 / 60; // Convert seconds to minutes
         const time = new Date();
         const timer = `h: ${time.getHours()}  m: ${time.getMinutes()}  D:${time.getDate()}  M:${time.getMonth() + 1}  Y:${time.getFullYear()}`;
         // Save the ongoing war information in the database
@@ -262,7 +405,18 @@ router.post('/startWar', async (req, res) => {
 
         // Schedule a job to handle the end of travel time
         const travelTimeInMillis = travelTime * 60 * 1000; // Convert minutes to milliseconds
-        schedule.scheduleJob(new Date(Date.now() + travelTimeInMillis), () => handleBattleEnd(battleId));
+
+        switch (mode) {
+            case 'standard':
+                schedule.scheduleJob(new Date(Date.now() + travelTimeInMillis), () => handleBattleEnd(battleId));
+                break;
+            case 'spy':
+                schedule.scheduleJob(new Date(Date.now() + travelTimeInMillis), () => handleSpyBattleEnd(battleId));
+                break;
+            default:
+                console.error(`Unknown battle mode: ${battle.mode}`);
+                return;
+        }
 
         // Send the distance and travel time in the response
         res.status(200).json({ distance, travelTime, battleId, timer });
