@@ -71,7 +71,7 @@ router.post('/getForce', async (req, res) => {
 
 router.post('/forceUpdate', async (req, res) => {
   const { playerToken, forces } = req.body;
-console.log(forces)
+
   try {
     const [existingUser] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [playerToken]);
 

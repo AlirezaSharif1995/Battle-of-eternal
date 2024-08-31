@@ -1,7 +1,17 @@
 const express = require('express');
 const { ethers } = require('ethers');
 const router = express.Router();
+const mysql = require('mysql2/promise');
 
+const pool = mysql.createPool({
+    host: 'localhost',
+    user: 'root',
+    password: 'Alireza1995!',
+    database: 'battle-of-eternals',
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
+  });
 // Assuming you have a provider set up to interact with the blockchain
 const provider = new ethers.JsonRpcProvider('https://polygon-rpc.com');
 
@@ -49,12 +59,41 @@ router.post('/get-nfts', async (req, res) => {
     }
 });
 
-router.post('./createResource', async(req,res)=>{
+router.post('/getResource', async(req,res)=>{
+    try {
+        const { playerToken } = req.body;
+        const [existingUser] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [playerToken]);
+        if (existingUser.length === 0) {
+          return res.status(404).json({ error: 'User not found' });
+        }
+        const user = {
+            resourceNFT: existingUser[0].resourceNFT
+        }
+        res.status(200).json(user);
+        
+    } catch (error) {
+        console.error('Error getResource', error);
+        res.status(500).json({ success: false, message: 'Error getResource', error: error.message });        
+    }
 
 });
 
-router.post('./useResource', async (req,res)=>{
-
+router.post('/updateResource', async (req,res)=>{
+    try {
+        const { playerToken, data } = req.body;
+        const [existingUser] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [playerToken]);
+    
+        if (existingUser.length === 0) {
+          return res.status(404).json({ error: 'User not found' });
+        }
+    
+        await pool.query('UPDATE users SET resourceNFT = ? WHERE playerToken = ?', [[JSON.stringify(data)], playerToken]);
+        res.status(200).json({ message: 'resourceNFT updated successfully' });
+        
+    } catch (error) {
+        console.error('Error updateResource', error);
+        res.status(500).json({ success: false, message: 'Error updateResource', error: error.message });        
+    }
 });
 
 module.exports = router;
