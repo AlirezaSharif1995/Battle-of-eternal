@@ -44,7 +44,7 @@ const usdtInterface = new ethers.Interface(transferABI);
 router.use(express.json());
 
 // Route to send USDT transaction
-router.post('/send-transaction', async (req, res) => {
+router.post('/send-transactionUSDT', async (req, res) => {
     const { recipientAddress, amount } = req.body;
 
     try {
@@ -58,6 +58,31 @@ router.post('/send-transaction', async (req, res) => {
 
         // Send USDT transaction
         const txResponse = await usdtContract.transfer(recipientAddress, amountInWei);
+        console.log("Transaction sent. Transaction hash:", txResponse.hash);
+
+        const receipt = await txResponse.wait();
+        console.log("Transaction mined:", receipt);
+
+        res.json({ success: true, txHash: txResponse.hash, receipt });
+    } catch (error) {
+        console.error("Transaction failed:", error);
+        res.json({ success: false, error: error.message });
+    }
+});
+
+// Route to send MATIC transaction
+router.post('/send-transactionMATIC', async (req, res) => {
+    const { recipientAddress, amount } = req.body;
+
+    try {
+        const amountInWei = ethers.parseUnits(amount.toString(), "ether");
+
+        // Send MATIC transaction
+        const txResponse = await wallet.sendTransaction({
+            to: recipientAddress,
+            value: amountInWei,
+        });
+
         console.log("Transaction sent. Transaction hash:", txResponse.hash);
 
         const receipt = await txResponse.wait();
@@ -99,7 +124,7 @@ router.post('/getBalance', async (req, res) => {
 });
 
 // Route to check recent transactions
-router.post('/checkTransition', async (req, res) => {
+router.post('/checkTransitionUSDT', async (req, res) => {
     const { address, playerToken } = req.body;
 
     try {
@@ -147,6 +172,57 @@ router.post('/checkTransition', async (req, res) => {
         }
 
         res.json({ success: false, message: "No new matching transactions found" });
+    } catch (error) {
+        console.error("checkTransition failed:", error);
+        res.json({ success: false, error: error.message });
+    }
+});
+
+// Route to check recent transactions
+router.post('/checkTransitionMATIC', async (req, res) => {
+    const { address, playerToken } = req.body;
+
+    try {
+        const etherscanUrl = `https://api.polygonscan.com/api?module=account&action=txlist&address=${address}&startblock=0&endblock=99999999&sort=desc&apikey=${ETHERSCAN_API_KEY}`;
+        const response = await axios.get(etherscanUrl);
+
+        if (response.data.status !== '1' || !response.data.result) {
+            return res.json({ success: false, message: "Unable to fetch transactions" });
+        }
+
+        const transactions = response.data.result.slice(0, 5);
+        const myWalletAddress = "0x332E5d04bfF3d26DF3C8f72e4452dd7d98748b14";
+
+        for (const tx of transactions) {
+            // Check if the transaction is an outgoing Matic transfer to your address
+            if (tx.to.toLowerCase() === myWalletAddress.toLowerCase() && tx.value > 0) {
+                try {
+                    const amount = ethers.formatUnits(tx.value, 18); // Matic has 18 decimals
+                    const hash = tx.hash;
+
+                    console.log('Detected Matic Transfer:', { hash, amount });
+
+                    const [rows] = await pool.query('SELECT hash FROM transactions WHERE hash = ?', [tx.hash]);
+                    if (rows.length > 0) {
+                        continue; // Skip if already recorded
+                    }
+
+                   // const contract = await determineContract(amount, playerToken);
+
+                    //await pool.query(
+                    //     'INSERT INTO transactions (hash, gemAmount, price) VALUES (?, ?, ?)',
+                    //     [tx.hash, contract.gemAmount, contract.price]
+                    // );
+
+                    res.json({ success: true, message: "New Matic transaction recorded", hash: tx.hash, amount });
+                    return;
+                } catch (error) {
+                    console.error('Error processing Matic transfer:', error);
+                }
+            }
+        }
+
+        res.json({ success: false, message: "No new matching Matic transactions found" });
     } catch (error) {
         console.error("checkTransition failed:", error);
         res.json({ success: false, error: error.message });

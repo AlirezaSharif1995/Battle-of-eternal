@@ -78,7 +78,7 @@ router.post('/forceUpdate', async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    await pool.query('UPDATE users SET `force` = ? WHERE playerToken = ?', [JSON.stringify(forces), playerToken]);
+    await pool.query('UPDATE users SET `force` = ? WHERE playerToken = ?', [[JSON.stringify(forces)], playerToken]);
     res.status(200).json({ message: 'Force updated successfully' });
 
   } catch (error) {

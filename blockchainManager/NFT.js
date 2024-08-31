@@ -49,4 +49,12 @@ router.post('/get-nfts', async (req, res) => {
     }
 });
 
+router.post('./createResource', async(req,res)=>{
+
+});
+
+router.post('./useResource', async (req,res)=>{
+
+});
+
 module.exports = router;

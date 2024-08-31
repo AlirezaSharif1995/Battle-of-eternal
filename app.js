@@ -7,7 +7,7 @@ const socket01 = require('./Sockets/socket01');
 const { registrationRouter, loginRouter, forgetPassword, playerInfo } = require('./authentication');
 const { building, playerResources, reportHandler, prize } = require('./playerResoureces');
 const { createAlliance, allianceManager } = require('./Alliance');
-const { wheatManager, contracts, NFT } = require('./blockchainManager');
+const { wheatManager, contracts, NFT, kingManager } = require('./blockchainManager');
 const { warManager } = require('./wars');
 const { messages } = require('./Message');
 
@@ -32,12 +32,14 @@ app.use('/transition', transition);
 app.use('/contracts', contracts);
 app.use('/warManager', warManager);
 app.use('/NFT', NFT);
-//app.use('/prize', prize);
-app.use("/messages",messages);
+app.use('/prize', prize);
+app.use("/messages", messages);
+app.use("/kingManager", kingManager);
 
 
 app.use(express.static(path.join(__dirname, 'Build')));
 app.get('/playGame', (req, res) => {
+  console.log('ok')
   res.sendFile(path.join(__dirname, 'Build', 'index.html'));
 });
 

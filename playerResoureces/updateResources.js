@@ -12,7 +12,7 @@ const connection = mysql.createConnection({
 
 // Function to update player resources
 function updatePlayerResources() {
-  const query = 'SELECT playerToken, username, wood, stone, wheat, iron, woodLevel, stoneLevel, wheatLevel, ironLevel, ironCapacity, wheatCapacity, stoneCapacity, woodCapacity FROM users';
+  const query = 'SELECT playerToken, username, wood, stone, wheat, iron, elixir, woodLevel, elixirLevel, stoneLevel, wheatLevel, ironLevel, ironCapacity, wheatCapacity, stoneCapacity, woodCapacity FROM users';
 
   connection.query(query, (error, results) => {
     if (error) {
@@ -26,11 +26,13 @@ function updatePlayerResources() {
       let updatedStone = player.stone + player.stoneLevel;
       let updatedWheat = player.wheat + player.wheatLevel;
       let updatedIron = player.iron + player.ironLevel;
+      let updatedelixir = player.elixir + player.elixirLevel;
 
       const maxWoodCapacity = player.woodCapacity;
       const maxStoneCapacity = player.stoneCapacity;
       const maxWheatCapacity = player.wheatCapacity;
       const maxIronCapacity = player.ironCapacity;
+      const maxElixirCapacity = player.elixirCapacity;
 
       if (updatedWood > maxWoodCapacity) {
         updatedWood = maxWoodCapacity;
@@ -44,11 +46,14 @@ function updatePlayerResources() {
       if (updatedIron > maxIronCapacity) {
         updatedIron = maxIronCapacity;
       }
+      if (updatedelixir > maxElixirCapacity) {
+        updatedelixir = maxElixirCapacity;
+      }
 
       // Update query
-      const updateQuery = 'UPDATE users SET wood = ?, stone = ?, wheat = ?, iron = ? WHERE playerToken = ?';
+      const updateQuery = 'UPDATE users SET wood = ?, stone = ?, wheat = ?, iron = ?, elixir = ? WHERE playerToken = ?';
 
-      connection.query(updateQuery, [updatedWood, updatedStone, updatedWheat, updatedIron, player.playerToken], updateError => {
+      connection.query(updateQuery, [updatedWood, updatedStone, updatedWheat, updatedIron, updatedelixir, player.playerToken], updateError => {
         if (updateError) {
           console.error(`Error updating resources for ${player.username}:`, updateError);
           return;

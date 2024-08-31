@@ -96,6 +96,9 @@ async function handleBattleEnd(battleId) {
         const defender = defenderResult[0];
 
         const attackerForces = attacker.force ? attacker.force : [];
+        const defenderForces1 = defender.defence ? defender.defence : [];
+        const defenderForces2 = defender.force ? defender.force : [];
+
         const defenderForces = defender.defence ? defender.defence : [];
 
         if (!Array.isArray(attackerForces) || !Array.isArray(defenderForces)) {
@@ -365,6 +368,115 @@ async function handleSpyBattleEnd(battleId) {
     }
 }
 
+async function handleMachineBattleEnd(battleId) {
+    try {
+        console.log(`Starting machine battle resolution for Battle ID: ${battleId}`);
+
+        // Fetch the ongoing battle
+        const [battleResult] = await pool.query('SELECT * FROM ongoingwar WHERE battleId = ?', [battleId]);
+        const battle = battleResult[0];
+
+        if (!battle) {
+            console.error(`Battle with ID ${battleId} not found.`);
+            return;
+        }
+
+        // Fetch attacker and defender information
+        const [attackerResult] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [battle.attack]);
+        const [defenderResult] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [battle.defence]);
+        const attacker = attackerResult[0];
+        const defender = defenderResult[0];
+
+        // Fetch defender's buildings
+        const [defenderBuildingsResult] = await pool.query('SELECT * FROM userbuildings WHERE playerToken = ?', [battle.defence]);
+        const defenderBuildings = defenderBuildingsResult[0];
+
+        const attackerForces = attacker.force ? attacker.force : [];
+
+        let battleReport = `\nBattle ${battleId} ended. `;
+        let winner;
+
+        let totalMachineAttackPower = 0;
+        let totalBuildingDefensePower = 0;
+        let buildingsDamagedReport = '';
+
+        console.log('Processing machine forces...');
+
+        // Process machine forces attacking buildings
+        for (const force of attackerForces) {
+            if (['Balloon', 'Battering Ram', 'Heavy Catapult'].includes(force.force.name)) {
+                const targetBuilding = force.targetBuilding;
+
+                console.log(`Attacking ${targetBuilding} with ${force.force.name}.`);
+
+                // Check if the targeted building exists and is active
+                if (defenderBuildings[targetBuilding] && defenderBuildings[targetBuilding].isActive) {
+                    const buildingLevel = defenderBuildings[targetBuilding].buildingLevel || 1;
+                    const buildingHP = calculateBuildingHP(targetBuilding, buildingLevel);
+
+                    // Initialize HP if not already set
+                    defenderBuildings[targetBuilding].hp = defenderBuildings[targetBuilding].hp || buildingHP;
+
+                    // Calculate and apply damage
+                    const damageDealt = force.force.attack * force.force.number;
+                    defenderBuildings[targetBuilding].hp -= damageDealt;
+
+                    totalMachineAttackPower += damageDealt;
+                    totalBuildingDefensePower += buildingHP;
+
+                    console.log(`Dealt ${damageDealt} damage to ${targetBuilding}. Remaining HP: ${defenderBuildings[targetBuilding].hp}`);
+
+                    // Check if the building is destroyed
+                    if (defenderBuildings[targetBuilding].hp <= 0) {
+                        buildingsDamagedReport += `${targetBuilding} has been destroyed.\n`;
+                        console.log(`${targetBuilding} has been destroyed.`);
+                        defenderBuildings[targetBuilding] = null; // Remove the building if HP is 0
+                    } else {
+                        buildingsDamagedReport += `${targetBuilding} remaining HP: ${defenderBuildings[targetBuilding].hp}\n`;
+                    }
+                } else {
+                    console.log(`${targetBuilding} is not active or does not exist.`);
+                }
+            }
+        }
+
+        // Determine the winner based on total attack power and building defense
+        if (totalMachineAttackPower > totalBuildingDefensePower) {
+            winner = 'attacker';
+            battleReport += 'Attacker won the battle.\n';
+            console.log('Attacker won the battle.');
+        } else {
+            winner = 'defender';
+            battleReport += 'Defender won the battle.\n';
+            console.log('Defender won the battle.');
+        }
+
+        // Compile the final report
+        battleReport += `Attacker total attack power: ${totalMachineAttackPower}\n`;
+        battleReport += `Defender total defense power: ${totalBuildingDefensePower}\n`;
+        battleReport += buildingsDamagedReport;
+
+        console.log(`Battle Report:\n${battleReport}`);
+
+        // Convert buildings data to JSON strings before saving to the database
+        const updatedDefenderBuildings = {};
+        for (const [key, value] of Object.entries(defenderBuildings)) {
+            updatedDefenderBuildings[key] = value ? JSON.stringify(value) : null;
+        }
+
+        // Save the updated buildings back to the database
+        await pool.query('UPDATE userbuildings SET ? WHERE playerToken = ?', [updatedDefenderBuildings, battle.defence]);
+
+        // Update the ongoing war record with the battle result
+        await pool.query('UPDATE ongoingwar SET result = ?, status = "Completed", winner = ? WHERE battleId = ?', [JSON.stringify(battleReport), winner, battleId]);
+
+        console.log('Machine battle resolution completed successfully.');
+
+    } catch (error) {
+        console.error('Error handling machine battle end:', error);
+    }
+}
+
 router.post('/startWar', async (req, res) => {
     const { attack, defence, mode } = req.body;
 
@@ -383,9 +495,6 @@ router.post('/startWar', async (req, res) => {
             return res.status(404).json({ error: 'Defender not found' });
         }
 
-        // Use the forces object directly
-        const attackerForces = (attacker.force);
-
         // Calculate the Euclidean distance
         const distance = Math.sqrt(
             Math.pow(defender.citypositionX - attacker.citypositionX, 2) +
@@ -396,6 +505,7 @@ router.post('/startWar', async (req, res) => {
         const travelTime = 10 / 60; // Convert seconds to minutes
         const time = new Date();
         const timer = `h: ${time.getHours()}  m: ${time.getMinutes()}  D:${time.getDate()}  M:${time.getMonth() + 1}  Y:${time.getFullYear()}`;
+        
         // Save the ongoing war information in the database
         const [result] = await pool.query(
             'INSERT INTO ongoingwar (attack, defence, distance, travelTime, startTime, status) VALUES (?, ?, ?, ?, NOW(), ?)',
@@ -409,6 +519,7 @@ router.post('/startWar', async (req, res) => {
         switch (mode) {
             case 'standard':
                 schedule.scheduleJob(new Date(Date.now() + travelTimeInMillis), () => handleBattleEnd(battleId));
+                // schedule.scheduleJob(new Date(Date.now() + travelTimeInMillis), () => handleMachineBattleEnd(battleId));
                 break;
             case 'spy':
                 schedule.scheduleJob(new Date(Date.now() + travelTimeInMillis), () => handleSpyBattleEnd(battleId));

@@ -176,8 +176,12 @@ async function generateRandomPosition(pool) {
             'SELECT * FROM users WHERE citypositionX = ? AND citypositionY = ?',
             [x, y]
         );
+        const [existingUser2] = await pool.query(
+            'SELECT * FROM prize WHERE citypositionX = ? AND citypositionY = ?',
+            [x, y]
+        );
 
-        if (existingUser.length === 0) {
+        if (existingUser.length === 0 || existingUser2.length === 0) {
             return { x, y };
         }
     }

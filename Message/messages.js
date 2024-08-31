@@ -70,7 +70,12 @@ router.post('/getMessages', async (req, res) => {
         const formattedChats = await Promise.all(chats.map(async (chat) => {
             const [senderResult] = await pool.query('SELECT username, avatarCode FROM users WHERE playerToken = ?', [chat.sender]);
             const [receiverResult] = await pool.query('SELECT username, avatarCode FROM users WHERE playerToken = ?', [chat.receiver]);
-
+        
+            // Check if senderResult or receiverResult is empty
+            if (!senderResult.length || !receiverResult.length) {
+                throw new Error('Sender or receiver not found');
+            }
+        
             return {
                 sender: {
                     playerToken: chat.sender,
@@ -87,6 +92,7 @@ router.post('/getMessages', async (req, res) => {
                 id: chat.id
             };
         }));
+        
 
         // Respond with the formatted chats
         res.status(201).json({ chats: formattedChats });
