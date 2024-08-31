@@ -19,7 +19,7 @@ const pool = mysql.createPool({
 const provider = new ethers.JsonRpcProvider('https://polygon-rpc.com');
 
 // Your wallet's private key and wallet instance
-const privateKey = '1b5cb5b41a466ec646ad7805e4a41119a7cc962dd52f88a6fbe38395de78a4f7';
+const privateKey = '4249d705de49f353c290b66fb2fb88e1d921ef429d6120134a0c79af8e5a27d3';
 const wallet = new ethers.Wallet(privateKey, provider);
 
 // Etherscan API key
@@ -181,7 +181,6 @@ router.post('/checkTransitionUSDT', async (req, res) => {
 // Route to check recent transactions
 router.post('/checkTransitionMATIC', async (req, res) => {
     const { address, playerToken } = req.body;
-
     try {
         const etherscanUrl = `https://api.polygonscan.com/api?module=account&action=txlist&address=${address}&startblock=0&endblock=99999999&sort=desc&apikey=${ETHERSCAN_API_KEY}`;
         const response = await axios.get(etherscanUrl);
@@ -191,7 +190,7 @@ router.post('/checkTransitionMATIC', async (req, res) => {
         }
 
         const transactions = response.data.result.slice(0, 5);
-        const myWalletAddress = "0x332E5d04bfF3d26DF3C8f72e4452dd7d98748b14";
+        const myWalletAddress = "0x186905F43BB6E0bF389f9ae817e209B3a4144D7a";
 
         for (const tx of transactions) {
             // Check if the transaction is an outgoing Matic transfer to your address
@@ -207,12 +206,10 @@ router.post('/checkTransitionMATIC', async (req, res) => {
                         continue; // Skip if already recorded
                     }
 
-                   // const contract = await determineContract(amount, playerToken);
-
-                    //await pool.query(
-                    //     'INSERT INTO transactions (hash, gemAmount, price) VALUES (?, ?, ?)',
-                    //     [tx.hash, contract.gemAmount, contract.price]
-                    // );
+                    await pool.query(
+                        'INSERT INTO transactions (hash, price) VALUES (?, ?)',
+                        [tx.hash, amount]
+                    );
 
                     res.json({ success: true, message: "New Matic transaction recorded", hash: tx.hash, amount });
                     return;

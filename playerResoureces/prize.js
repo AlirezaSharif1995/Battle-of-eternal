@@ -17,7 +17,7 @@ router.post('/add', async (req, res) => {
         const { loot } = req.body;
         const { x, y } = await generateRandomPosition(pool);
         const token = generateRandomToken();
-        
+
         let gems;
         let number;
 
@@ -42,94 +42,97 @@ router.post('/add', async (req, res) => {
                 break;
         }
 
-        const force = JSON.stringify([{
-            "force": {
-                "load": 100,
-                "name": "Infantry",
-                "time": 0,
-                "level": 20,
-                "speed": 60,
-                "attack": 50,
-                "number": number,
-                "defence": 190,
-                "isSpecialForce": false
-            },
-            "forceName": "Infantry"
-        },
-        {
-            "force": {
-                "load": 50,
-                "name": "Swordsman",
-                "time": 0,
-                "level": 20,
-                "speed": 60,
-                "attack": 70,
-                "number": number,
-                "defence": 55,
-                "isSpecialForce": false
-            },
-            "forceName": "Swordsman"
-        },
-        {
-            "force": {
-                "load": 50,
-                "name": "Maceman",
-                "time": 0,
-                "level": 20,
-                "speed": 60,
-                "attack": 85,
-                "number": number,
-                "defence": 85,
-                "isSpecialForce": false
-            },
-            "forceName": "Maceman"
-        },
-        {
-            "force": {
-                "load": 50,
-                "name": "Spy",
-                "time": 0,
-                "level": 1,
-                "speed": 70,
-                "attack": 35,
-                "number": number,
-                "defence": 38,
-                "isSpecialForce": false
-            },
-            "forceName": "Spy"
-        },
-        {
-            "force": {
-                "load": 50,
-                "name": "Archer",
-                "time": 0,
-                "level": 1,
-                "speed": 70,
-                "attack": 70,
-                "number": number,
-                "defence": 70,
-                "isSpecialForce": false
-            },
-            "forceName": "Archer"
-        },
-        {
-            "force": {
-                "load": 50,
-                "name": "knight",
-                "time": 0,
-                "level": 1,
-                "speed": 160,
-                "attack": 120,
-                "targetBuilding": "ArmyCamp",
-                "number": number,
-                "defence": 122,
-                "isSpecialForce": false
-            },
-            "forceName": "knight"
-        }]);
+        const force =
+            [
+                {
+                    "force": {
+                        "load": 100,
+                        "name": "Infantry",
+                        "time": 0,
+                        "level": 20,
+                        "speed": 60,
+                        "attack": 50,
+                        "number": number,
+                        "defence": 190,
+                        "isSpecialForce": false
+                    },
+                    "forceName": "Infantry"
+                },
+                {
+                    "force": {
+                        "load": 50,
+                        "name": "Swordsman",
+                        "time": 0,
+                        "level": 20,
+                        "speed": 60,
+                        "attack": 70,
+                        "number": number,
+                        "defence": 55,
+                        "isSpecialForce": false
+                    },
+                    "forceName": "Swordsman"
+                },
+                {
+                    "force": {
+                        "load": 50,
+                        "name": "Maceman",
+                        "time": 0,
+                        "level": 20,
+                        "speed": 60,
+                        "attack": 85,
+                        "number": number,
+                        "defence": 85,
+                        "isSpecialForce": false
+                    },
+                    "forceName": "Maceman"
+                },
+                {
+                    "force": {
+                        "load": 50,
+                        "name": "Spy",
+                        "time": 0,
+                        "level": 1,
+                        "speed": 70,
+                        "attack": 35,
+                        "number": number,
+                        "defence": 38,
+                        "isSpecialForce": false
+                    },
+                    "forceName": "Spy"
+                },
+                {
+                    "force": {
+                        "load": 50,
+                        "name": "Archer",
+                        "time": 0,
+                        "level": 1,
+                        "speed": 70,
+                        "attack": 70,
+                        "number": number,
+                        "defence": 70,
+                        "isSpecialForce": false
+                    },
+                    "forceName": "Archer"
+                },
+                {
+                    "force": {
+                        "load": 50,
+                        "name": "knight",
+                        "time": 0,
+                        "level": 1,
+                        "speed": 160,
+                        "attack": 120,
+                        "targetBuilding": "ArmyCamp",
+                        "number": number,
+                        "defence": 122,
+                        "isSpecialForce": false
+                    },
+                    "forceName": "knight"
+                }
+            ];
 
         // Insert into the database
-        await pool.query('INSERT INTO prize (prizeID, cityPositionX, cityPositionY, `force`, loot) VALUES (?, ?, ?, ?, ?)', [token, x, y, force, gems]);
+        await pool.query('INSERT INTO prize (prizeID, cityPositionX, cityPositionY, `force`, loot) VALUES (?, ?, ?, ?, ?)', [token, x, y, [JSON.stringify(force)], [JSON.stringify(gems)]]);
         res.status(201).json({ message: 'Prize registered successfully', cityToken: token });
 
     } catch (error) {
@@ -138,13 +141,32 @@ router.post('/add', async (req, res) => {
     }
 });
 
-
-
 router.post('/delete', (req, res) => {
-
+    
 });
 
-router.post('/update', (req, res) => {
+router.post('/get', async (req, res) => {
+    try {
+        const [users] = await pool.query('SELECT * FROM prize');
+        const validUsers = [];
+
+        for (const user of users) {
+            validUsers.push({
+                PrizeID: user.prizeID,
+                force: user.force,
+                loot: user.loot,
+                citypositionX: user.citypositionX,
+                cityPositionY: user.cityPositionY,
+            });
+        }
+
+        res.status(201).json({ message: 'registerd prize', validUsers });
+
+
+    } catch (error) {
+        console.error('Error get city:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
 
 });
 
