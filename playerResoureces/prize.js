@@ -156,7 +156,7 @@ router.post('/get', async (req, res) => {
                 force: user.force,
                 loot: user.loot,
                 citypositionX: user.citypositionX,
-                cityPositionY: user.cityPositionY,
+                cityPositionY: user.citypositionY
             });
         }
 
