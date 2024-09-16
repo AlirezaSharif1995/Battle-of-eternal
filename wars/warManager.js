@@ -81,7 +81,7 @@ router.post('/searchReport', async (req, res) => {
 
 async function handleBattleEnd(battleId) {
     try {
-        const [ongoingWarResult] = await pool.query('SELECT * FROM ongoingwar WHERE battleId = ?', [battleId]);
+        const [ongoingWarResult] = await pool.query('SELECT * FROM wars WHERE id = ?', [battleId]);
         const battle = ongoingWarResult[0];
 
         if (!battle) {
@@ -89,13 +89,13 @@ async function handleBattleEnd(battleId) {
             return;
         }
 
-        const [attackerResult] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [battle.attack]);
+        const [attackerResult] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [battle.attackerPlayerToken]);
         const attacker = attackerResult[0];
 
-        const [defenderResult] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [battle.defence]);
+        const [defenderResult] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [battle.defenderPlayerToken]);
         const defender = defenderResult[0];
 
-        const attackerForces = attacker.force ? attacker.force : [];
+        const attackerForces = battle.attackerForce;
         const defenderForces1 = defender.defence ? defender.defence : [];
         const defenderForces2 = defender.force ? defender.force : [];
 
@@ -249,8 +249,8 @@ async function handleBattleEnd(battleId) {
 
         console.log(battleReport);
 
-        await pool.query('UPDATE ongoingwar SET result = ?, status = "Completed", winner = ? WHERE battleId = ?',
-            [JSON.stringify(battleReport), winner, battleId]);
+        await pool.query('UPDATE wars SET result = ?, warStatus = "finished" WHERE id = ?',
+            [JSON.stringify(battleReport), battleId]);
 
     } catch (error) {
         console.error('Error handling battle end:', error);
@@ -478,22 +478,26 @@ async function handleMachineBattleEnd(battleId) {
 }
 
 router.post('/startWar', async (req, res) => {
-    const { attack, defence, mode } = req.body;
+    const { attackerToken, defenderToken, attackerForce, mode } = req.body;
 
     try {
-        // Retrieve attacker data including forces
-        const [attackerResult] = await pool.query('SELECT citypositionX, citypositionY, `force` FROM users WHERE playerToken = ?', [attack]);
+        const [attackerResult] = await pool.query('SELECT citypositionX, citypositionY FROM users WHERE playerToken = ?', [attackerToken]);
         const attacker = attackerResult[0];
         if (!attacker) {
             return res.status(404).json({ error: 'Attacker not found' });
         }
 
-        // Retrieve defender data
-        const [defenderResult] = await pool.query('SELECT citypositionX, citypositionY, `force` FROM users WHERE playerToken = ?', [defence]);
+        // Retrieve defender data including city position, force, and defence
+        const [defenderResult] = await pool.query('SELECT citypositionX, citypositionY, `force`, `defence` FROM users WHERE playerToken = ?', [defenderToken]);
         const defender = defenderResult[0];
         if (!defender) {
             return res.status(404).json({ error: 'Defender not found' });
         }
+
+        // Use the forces object directly
+        const attackerForces = attackerForce;
+        const defenderForces = defender.force;
+        const defenderDefence = defender.defence;
 
         // Calculate the Euclidean distance
         const distance = Math.sqrt(
@@ -508,8 +512,8 @@ router.post('/startWar', async (req, res) => {
         
         // Save the ongoing war information in the database
         const [result] = await pool.query(
-            'INSERT INTO ongoingwar (attack, defence, distance, travelTime, startTime, status) VALUES (?, ?, ?, ?, NOW(), ?)',
-            [attack, defence, distance, travelTime, 'ongoing']
+            'INSERT INTO wars (attackerPlayerToken, defenderPlayerToken, attackerForce, defenderForce, mode, travelTime, scheduledStartTime, warStatus) VALUES (?, ?, ?, ?, ?, ?, NOW(), ?)',
+            [attackerToken, defenderToken, JSON.stringify(attackerForce), JSON.stringify(defenderForces), mode, travelTime, 'scheduled']
         );
         const battleId = result.insertId;
 
@@ -517,7 +521,7 @@ router.post('/startWar', async (req, res) => {
         const travelTimeInMillis = travelTime * 60 * 1000; // Convert minutes to milliseconds
 
         switch (mode) {
-            case 'standard':
+            case 'battle':
                 schedule.scheduleJob(new Date(Date.now() + travelTimeInMillis), () => handleBattleEnd(battleId));
                 // schedule.scheduleJob(new Date(Date.now() + travelTimeInMillis), () => handleMachineBattleEnd(battleId));
                 break;
