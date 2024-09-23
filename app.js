@@ -39,7 +39,6 @@ app.use("/kingManager", kingManager);
 
 app.use(express.static(path.join(__dirname, 'Build')));
 app.get('/playGame', (req, res) => {
-  console.log('ok')
   res.sendFile(path.join(__dirname, 'Build', 'index.html'));
 });
 

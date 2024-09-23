@@ -20,7 +20,7 @@ router.post('/addWar', async (req, res) => {
     try {
 
         const battleId = generateRandomToken();
-        await pool.query('INSERT INTO wars (battleId, attack, defence, reportAttack, reportDefence) VALUES (?, ?, ?, ?, ?)', [battleId, attack, defence, reportAttack, reportDefence]);
+        await pool.query('INSERT INTO wars (id, attack, defence, reportAttack, reportDefence) VALUES (?, ?, ?, ?, ?)', [battleId, attack, defence, reportAttack, reportDefence]);
         res.status(201).json({ message: 'war report saved successfully', battleId });
 
     } catch (error) {
@@ -36,7 +36,7 @@ router.post('/warReport', async (req, res) => {
     const { battleId } = req.body;
     try {
 
-        const [war] = await pool.query('SELECT * FROM wars WHERE battleId = ?', [battleId]);
+        const [war] = await pool.query('SELECT * FROM wars WHERE id = ?', [battleId]);
         const [attackerName] = await pool.query('SELECT * FROM users WHERE playerToken = ?', war[0].attack);
         const [defenceName] = await pool.query('SELECT * FROM users WHERE playerToken = ?', war[0].defence);
 
@@ -64,7 +64,7 @@ router.post('/warReport', async (req, res) => {
 router.post('/searchReport', async (req, res) => {
     const { playerToken } = req.body;
     try {
-        const [wars] = await pool.query('SELECT battleId FROM wars WHERE attack = ? OR defence = ?', [playerToken, playerToken]);
+        const [wars] = await pool.query('SELECT id FROM wars WHERE attack = ? OR defence = ?', [playerToken, playerToken]);
         if (wars.length === 0) {
             return res.status(404).json({ error: 'War not found' });
         }
@@ -99,30 +99,35 @@ async function handleBattleEnd(battleId) {
         const defenderForces1 = defender.defence ? defender.defence : [];
         const defenderForces2 = defender.force ? defender.force : [];
 
-        const defenderForces = defender.defence ? defender.defence : [];
-
-        if (!Array.isArray(attackerForces) || !Array.isArray(defenderForces)) {
+        if (!Array.isArray(attackerForces) || !Array.isArray(defenderForces2)) {
             console.error('Invalid forces data for attacker or defender.');
             return;
         }
 
-        // Calculate total attack and defense power excluding Spies
         const totalAttackPower = attackerForces.reduce((total, force) => {
-            if (force.force.name !== 'Spy') {
-                return total + (force.force.attack * force.force.number);
-            }
-            return total;
+            return total + (force.force.attack * force.force.number);
         }, 0);
 
-        const totalDefensePower = defenderForces.reduce((total, unit) => {
+
+        const totalDefensePower1 = defenderForces1.reduce((total, unit) => {
             if (unit.force.name !== 'Spy') {
                 return total + (unit.force.defence * unit.force.number);
             }
             return total;
         }, 0);
 
+        const totalDefensePower2 = defenderForces2.reduce((total, unit) => {
+            if (unit.force.name !== 'Spy') {
+                return total + (unit.force.defence * unit.force.number);
+            }
+            return total;
+        }, 0);
+
+        totalDefensePower = totalDefensePower1 + totalDefensePower2;
+
         console.log(`Attacker total attack power: ${totalAttackPower}`);
-        console.log(`Defender total defense power: ${totalDefensePower}`);
+        console.log(`Defender total force power: ${totalDefensePower}`);
+
 
         let battleReport = `Battle ${battleId} ended. `;
         let winner;
@@ -132,7 +137,14 @@ async function handleBattleEnd(battleId) {
             battleReport += 'Attacker won the battle.\n';
 
             // All defender forces wiped out (excluding Spies)
-            defenderForces.forEach(unit => {
+            defenderForces1.forEach(unit => {
+                if (unit.force.name !== 'Spy') {
+                    unit.force.number = 0;
+                }
+            });
+
+            // All defender forces wiped out (excluding Spies)
+            defenderForces2.forEach(unit => {
                 if (unit.force.name !== 'Spy') {
                     unit.force.number = 0;
                 }
@@ -156,6 +168,30 @@ async function handleBattleEnd(battleId) {
 
                     battleReport += `${force.force.name} - Initial: ${initialNumber}, Remaining: ${force.force.number}, Casualties: ${initialNumber - force.force.number}\n`;
                 }
+            });
+
+            currentForces = attacker.force;
+
+            // Assuming currentForces holds the forces retrieved from the database
+            currentForces.forEach(currentForce => {
+                // Find the matching force in the updated attackerForces
+                const matchingForce = attackerForces.find(f => f.force.name === currentForce.force.name);
+
+                if (matchingForce) {
+                    // Add the surviving forces from the battle to the current forces
+                    currentForce.force.number += matchingForce.force.number;
+                }
+            });
+
+            // Handle any forces in attackerForces that were not present in currentForces
+            attackerForces.forEach(newForce => {
+                const existingForce = currentForces.find(f => f.force.name === newForce.force.name);
+
+                if (!existingForce && newForce.force.number > 0) {
+                    // Add this new surviving force to currentForces
+                    currentForces.push(newForce);
+                }
+
             });
 
             // Calculate total raid capacity of surviving attacker forces
@@ -201,10 +237,10 @@ async function handleBattleEnd(battleId) {
             });
 
             // Update defender and attacker resources in the database
-            await pool.query('UPDATE users SET wood = ?, stone = ?, iron = ?, wheat = ?, defence = ? WHERE playerToken = ?',
-                [defender.wood, defender.stone, defender.iron, defender.wheat, JSON.stringify(defenderForces), battle.defence]);
+            await pool.query('UPDATE users SET wood = ?, stone = ?, iron = ?, wheat = ?, `force` = ?, defence = ? WHERE playerToken = ?',
+                [defender.wood, defender.stone, defender.iron, defender.wheat, JSON.stringify(defenderForces2),  JSON.stringify(defenderForces1), battle.defenderPlayerToken]);
             await pool.query('UPDATE users SET wood = ?, stone = ?, iron = ?, wheat = ?, `force` = ? WHERE playerToken = ?',
-                [attacker.wood, attacker.stone, attacker.iron, attacker.wheat, JSON.stringify(attackerForces), battle.attack]);
+                [attacker.wood, attacker.stone, attacker.iron, attacker.wheat, JSON.stringify(currentForces), battle.attackerPlayerToken]);
 
         } else {
             winner = 'defender';
@@ -219,9 +255,9 @@ async function handleBattleEnd(battleId) {
 
             // Calculate defender casualties
             const remainingDefenseHealth = totalAttackPower; // Total attack power equals total defense health used
-            const totalForceHealth = defenderForces.reduce((total, unit) => unit.force.name !== 'Spy' ? total + (unit.force.hp * unit.force.number) : total, 0);
+            const totalForceHealth = defenderForces2.reduce((total, unit) => unit.force.name !== 'Spy' ? total + (unit.force.hp * unit.force.number) : total, 0);
 
-            defenderForces.forEach(unit => {
+            defenderForces2.forEach(unit => {
                 if (unit.force.name !== 'Spy') {
                     const forceHealth = unit.force.hp * unit.force.number;
                     const casualtyPercentage = forceHealth / totalForceHealth;
@@ -241,7 +277,7 @@ async function handleBattleEnd(battleId) {
             await pool.query('UPDATE users SET `force` = ? WHERE playerToken = ?',
                 [JSON.stringify(attackerForces), battle.attack]);
             await pool.query('UPDATE users SET `defence` = ? WHERE playerToken = ?',
-                [JSON.stringify(defenderForces), battle.defence]);
+                [JSON.stringify(defenderForces2), battle.defence]);
         }
 
         battleReport += `Final attacker resources: Wood: ${attacker.wood}, Stone: ${attacker.stone}, Iron: ${attacker.iron}, Wheat: ${attacker.wheat}\n`;
@@ -259,7 +295,7 @@ async function handleBattleEnd(battleId) {
 
 async function handleSpyBattleEnd(battleId) {
     try {
-        const [ongoingWarResult] = await pool.query('SELECT * FROM ongoingwar WHERE battleId = ?', [battleId]);
+        const [ongoingWarResult] = await pool.query('SELECT * FROM wars WHERE id = ?', [battleId]);
         const battle = ongoingWarResult[0];
 
         if (!battle) {
@@ -352,13 +388,13 @@ async function handleSpyBattleEnd(battleId) {
         });
 
         // Update the database with new force numbers
-        await pool.query('UPDATE users SET `force` = ? WHERE playerToken = ?', 
+        await pool.query('UPDATE users SET `force` = ? WHERE playerToken = ?',
             [JSON.stringify(attackerForces), battle.attack]);
-        await pool.query('UPDATE users SET `defence` = ? WHERE playerToken = ?', 
+        await pool.query('UPDATE users SET `defence` = ? WHERE playerToken = ?',
             [JSON.stringify(defenderForces), battle.defence]);
 
         // Update the ongoing war table with the result and winner
-        await pool.query('UPDATE ongoingwar SET result = ?, status = "Completed", winner = ? WHERE battleId = ?', 
+        await pool.query('UPDATE wars SET result = ?, status = "Completed", winner = ? WHERE id = ?',
             [JSON.stringify(spyBattleReport), winner, battleId]);
 
         console.log(spyBattleReport);
@@ -373,7 +409,7 @@ async function handleMachineBattleEnd(battleId) {
         console.log(`Starting machine battle resolution for Battle ID: ${battleId}`);
 
         // Fetch the ongoing battle
-        const [battleResult] = await pool.query('SELECT * FROM ongoingwar WHERE battleId = ?', [battleId]);
+        const [battleResult] = await pool.query('SELECT * FROM wars WHERE id = ?', [battleId]);
         const battle = battleResult[0];
 
         if (!battle) {
@@ -468,7 +504,7 @@ async function handleMachineBattleEnd(battleId) {
         await pool.query('UPDATE userbuildings SET ? WHERE playerToken = ?', [updatedDefenderBuildings, battle.defence]);
 
         // Update the ongoing war record with the battle result
-        await pool.query('UPDATE ongoingwar SET result = ?, status = "Completed", winner = ? WHERE battleId = ?', [JSON.stringify(battleReport), winner, battleId]);
+        await pool.query('UPDATE wars SET result = ?, status = "Completed", winner = ? WHERE id = ?', [JSON.stringify(battleReport), winner, battleId]);
 
         console.log('Machine battle resolution completed successfully.');
 
@@ -481,23 +517,36 @@ router.post('/startWar', async (req, res) => {
     const { attackerToken, defenderToken, attackerForce, mode } = req.body;
 
     try {
-        const [attackerResult] = await pool.query('SELECT citypositionX, citypositionY FROM users WHERE playerToken = ?', [attackerToken]);
+        const [attackerResult] = await pool.query('SELECT citypositionX, citypositionY, `force` FROM users WHERE playerToken = ?', [attackerToken]);
         const attacker = attackerResult[0];
         if (!attacker) {
             return res.status(404).json({ error: 'Attacker not found' });
         }
 
+        let currentForces = attacker.force; // Assuming the forces are stored as JSON in the database
+
+        // Loop through the sent forces and deduct from current forces
+        attackerForce.forEach(sentForce => {
+            let matchingForce = currentForces.find(f => f.force.name === sentForce.force.name);
+            if (matchingForce) {
+                matchingForce.force.number -= sentForce.force.number;
+                if (matchingForce.force.number < 0) {
+                    matchingForce.force.number = 0; // Prevent negative numbers
+                }
+            }
+        });
+
+        // Update the attacker's forces in the database
+        const updatedForces = JSON.stringify(currentForces);
+        await pool.query('UPDATE users SET `force` = ? WHERE playerToken = ?', [updatedForces, attackerToken]);
+
+
         // Retrieve defender data including city position, force, and defence
-        const [defenderResult] = await pool.query('SELECT citypositionX, citypositionY, `force`, `defence` FROM users WHERE playerToken = ?', [defenderToken]);
+        const [defenderResult] = await pool.query('SELECT citypositionX, citypositionY FROM users WHERE playerToken = ?', [defenderToken]);
         const defender = defenderResult[0];
         if (!defender) {
             return res.status(404).json({ error: 'Defender not found' });
         }
-
-        // Use the forces object directly
-        const attackerForces = attackerForce;
-        const defenderForces = defender.force;
-        const defenderDefence = defender.defence;
 
         // Calculate the Euclidean distance
         const distance = Math.sqrt(
@@ -509,12 +558,12 @@ router.post('/startWar', async (req, res) => {
         const travelTime = 10 / 60; // Convert seconds to minutes
         const time = new Date();
         const timer = `h: ${time.getHours()}  m: ${time.getMinutes()}  D:${time.getDate()}  M:${time.getMonth() + 1}  Y:${time.getFullYear()}`;
-        
+
         // Save the ongoing war information in the database
         const [result] = await pool.query(
-            'INSERT INTO wars (attackerPlayerToken, defenderPlayerToken, attackerForce, defenderForce, mode, travelTime, scheduledStartTime, warStatus) VALUES (?, ?, ?, ?, ?, ?, NOW(), ?)',
-            [attackerToken, defenderToken, JSON.stringify(attackerForce), JSON.stringify(defenderForces), mode, travelTime, 'scheduled']
-        );
+            'INSERT INTO wars (attackerPlayerToken, defenderPlayerToken, attackerForce, mode, travelTime, scheduledStartTime, warStatus) VALUES (?, ?, ?, ?, ?, NOW(), ?)',
+            [attackerToken, defenderToken, JSON.stringify(attackerForce), mode, travelTime, 'scheduled']);
+
         const battleId = result.insertId;
 
         // Schedule a job to handle the end of travel time
@@ -547,7 +596,7 @@ router.post('/warResult', async (req, res) => {
 
     try {
         const [attackerResults] = await pool.query(
-            'SELECT * FROM ongoingwar WHERE attack = ? OR defence = ?',
+            'SELECT * FROM wars WHERE attackerPlayerToken = ? OR defenderPlayerToken = ?',
             [playerToken, playerToken]
         );
 
@@ -579,7 +628,7 @@ router.post('/deleteWar', async (req, res) => {
     const { battleId } = req.body;
 
     try {
-        await pool.query('DELETE FROM ongoingwar WHERE battleId = ?', [battleId]);
+        await pool.query('DELETE FROM wars WHERE id = ?', [battleId]);
         res.status(200).json({ message: `War with battleId: ${battleId} deleted successfully` });
     } catch (error) {
         console.error('Error deleting War:', error);
