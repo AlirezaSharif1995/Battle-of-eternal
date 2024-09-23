@@ -238,7 +238,7 @@ async function handleBattleEnd(battleId) {
 
             // Update defender and attacker resources in the database
             await pool.query('UPDATE users SET wood = ?, stone = ?, iron = ?, wheat = ?, `force` = ?, defence = ? WHERE playerToken = ?',
-                [defender.wood, defender.stone, defender.iron, defender.wheat, JSON.stringify(defenderForces2),  JSON.stringify(defenderForces1), battle.defenderPlayerToken]);
+                [defender.wood, defender.stone, defender.iron, defender.wheat, JSON.stringify(defenderForces2), JSON.stringify(defenderForces1), battle.defenderPlayerToken]);
             await pool.query('UPDATE users SET wood = ?, stone = ?, iron = ?, wheat = ?, `force` = ? WHERE playerToken = ?',
                 [attacker.wood, attacker.stone, attacker.iron, attacker.wheat, JSON.stringify(currentForces), battle.attackerPlayerToken]);
 
@@ -246,38 +246,49 @@ async function handleBattleEnd(battleId) {
             winner = 'defender';
             battleReport += 'Defender won the battle.\n';
 
-            // All attacker forces wiped out (excluding Spies)
-            attackerForces.forEach(force => {
-                if (force.force.name !== 'Spy') {
-                    force.force.number = 0;
-                }
-            });
+            // Assuming totalAttackPower is already calculated
 
-            // Calculate defender casualties
-            const remainingDefenseHealth = totalAttackPower; // Total attack power equals total defense health used
-            const totalForceHealth = defenderForces2.reduce((total, unit) => unit.force.name !== 'Spy' ? total + (unit.force.hp * unit.force.number) : total, 0);
+            // Proceed with calculating casualties for both defender forces
+            const allDefenderForces = [...defenderForces1, ...defenderForces2];
 
-            defenderForces2.forEach(unit => {
+            // Calculate total attack power
+            const totalAttackPower = attackerForces.reduce((total, force) =>
+                force.force.name !== 'Spy' ? total + (force.force.attack * force.force.number) : total, 0);
+
+            // Calculate total defense power (excluding spies)
+            const totalDefensePower = allDefenderForces.reduce((total, unit) =>
+                unit.force.name !== 'Spy' ? total + (unit.force.defence * unit.force.number) : total, 0);
+
+            // Determine remaining attack power (it will be used as total attack power for casualties)
+            let remainingAttackPower = totalAttackPower;
+
+            // Proceed with calculating casualties for defender forces
+            allDefenderForces.forEach(unit => {
                 if (unit.force.name !== 'Spy') {
-                    const forceHealth = unit.force.hp * unit.force.number;
-                    const casualtyPercentage = forceHealth / totalForceHealth;
-                    const casualties = remainingDefenseHealth * casualtyPercentage;
+                    const forceDefensePower = unit.force.defence * unit.force.number;
+                    const damageProportion = forceDefensePower / totalDefensePower;
+                    const damageDealt = remainingAttackPower * damageProportion; // Damage the unit takes based on its proportion
+
                     const initialNumber = unit.force.number;
-                    unit.force.number -= Math.round(casualties / unit.force.hp);
+                    unit.force.number -= Math.round(damageDealt / unit.force.defence);
 
                     if (unit.force.number < 0) {
-                        unit.force.number = 0;
+                        unit.force.number = 0; // Ensure no negative values
                     }
 
+                    // Add to the battle report
                     battleReport += `${unit.force.name} - Initial: ${initialNumber}, Remaining: ${unit.force.number}, Casualties: ${initialNumber - unit.force.number}\n`;
                 }
             });
 
-            // Update attacker forces in the database
-            await pool.query('UPDATE users SET `force` = ? WHERE playerToken = ?',
-                [JSON.stringify(attackerForces), battle.attack]);
+            // Update defender forces in the database
             await pool.query('UPDATE users SET `defence` = ? WHERE playerToken = ?',
-                [JSON.stringify(defenderForces2), battle.defence]);
+                [JSON.stringify(defenderForces1), battle.defenderPlayerToken]);
+
+            await pool.query('UPDATE users SET `force` = ? WHERE playerToken = ?',
+                [JSON.stringify(defenderForces2), battle.defenderPlayerToken]);
+
+
         }
 
         battleReport += `Final attacker resources: Wood: ${attacker.wood}, Stone: ${attacker.stone}, Iron: ${attacker.iron}, Wheat: ${attacker.wheat}\n`;
