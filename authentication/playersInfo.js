@@ -66,6 +66,12 @@ router.post('/changeAvatar', async (req, res) => {
 router.post('/changeUsername', async (req, res) => {
     const { playerToken, username } = req.body;
 
+    const [existingUser] = await pool.query('SELECT * FROM users WHERE username = ?', [username]);
+
+    if (existingUser.length > 0) {
+        return res.status(400).json({ error: 'username is already registered' });
+    }
+
     try {
         await pool.query('UPDATE users SET username = ? WHERE playerToken = ?', [username, playerToken]);
         res.status(200).json({ message: 'Data updated successful' });
