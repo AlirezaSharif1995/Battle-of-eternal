@@ -126,11 +126,9 @@ async function handleBattleEnd(battleId) {
 
         totalDefensePower = totalDefensePower1 + totalDefensePower2;
 
-        console.log(`Attacker total attack power: ${totalAttackPower}`);
-        console.log(`Defender total force power: ${totalDefensePower}`);
-
-
-        let battleReport = `Battle ${battleId} ended. `;
+        let battleReport = `Battle ${battleId} ended.\n`;
+        battleReport += `Attacker total attack power: ${totalAttackPower}.\n`;
+        battleReport += `Defender total force power: ${totalDefensePower}.\n`;
         let winner;
 
         const attackKingEffects = attackerForces.reduce((total, unit) => {
@@ -154,6 +152,10 @@ async function handleBattleEnd(battleId) {
             return total;
         }, 0);
 
+        battleReport += `attackKingEffects: ${attackKingEffects}.\n`;
+        battleReport += `defenceKingEffectDefense: ${defenceKingEffect1} + defenceKingEffectForce: ${defenceKingEffect2}.\n`;
+
+
         totalAttackPower = totalAttackPower + (attackKingEffects * totalAttackPower);
         totalDefensePower = totalDefensePower + (totalDefensePower * defenceKingEffect1) + (totalDefensePower * defenceKingEffect2);
 
@@ -161,37 +163,54 @@ async function handleBattleEnd(battleId) {
             winner = 'attacker';
             battleReport += 'Attacker won the battle.\n';
 
-            // All defender forces wiped out (excluding Spies)
-            defenderForces1.forEach(unit => {
-                if (unit.force.name !== 'Spy' && unit.force.name !== 'King') {
-                    unit.force.number = 0;
-                }
-            });
+            // All defender forces wiped out (excluding Spies and King)
+            const wipeOutDefenderForces = (forces) => {
+                forces.forEach(unit => {
+                    if (unit.force.name !== 'Spy' && unit.force.name !== 'King') {
+                        unit.force.number = 0;
+                    }
+                });
+            };
 
-            // All defender forces wiped out (excluding Spies)
-            defenderForces2.forEach(unit => {
-                if (unit.force.name !== 'Spy' && unit.force.name !== 'King') {
-                    unit.force.number = 0;
-                }
-            });
+            wipeOutDefenderForces(defenderForces1);
+            wipeOutDefenderForces(defenderForces2);
+
+            // Apply King damage: 0.1% of totalAttackPower
+            const applyKingDamage = (forces, attackPower, type) => {
+                const kingDamage = attackPower * 0.001;
+                forces.forEach(unit => {
+                    if (unit.force.name === 'King') {
+                        if (kingDamage >= unit.force.defence) {
+                            battleReport += `${type} King eliminated.\n`;
+                            unit.force.number = 0;
+                        } else {
+                            battleReport += `${type} King took no damage.\n`;
+                        }
+                    }
+                });
+            };
+
+            applyKingDamage(defenderForces1, totalAttackPower, 'Defender');
+            applyKingDamage(defenderForces2, totalAttackPower, 'Defender');
+            applyKingDamage(attackerForces, totalDefensePower, 'Attacker');
 
             // Calculate attacker casualties
-            const remainingAttackPower = totalDefensePower; // Total defense power equals total attack power used
-            const totalForcePower = attackerForces.reduce((total, force) => force.force.name !== 'Spy' ? total + (force.force.attack * force.force.number) : total, 0);
+            const remainingAttackPower = totalDefensePower;
+            const totalForcePower = attackerForces.reduce((total, force) =>
+                force.force.name !== 'Spy' && force.force.name !== 'Balloon' && force.force.name !== 'King'
+                    ? total + (force.force.attack * force.force.number)
+                    : total, 0);
 
             const allAttackerForces = [...attackerForces, ...attackerMachine];
 
             allAttackerForces.forEach(force => {
-                if (force.force.name !== 'Spy', force.force.name !== 'Balloon') {
+                if (force.force.name !== 'Spy' && force.force.name !== 'Balloon' && force.force.name !== 'King') {
                     const forcePower = force.force.attack * force.force.number;
                     const casualtyPercentage = forcePower / totalForcePower;
                     const casualties = remainingAttackPower * casualtyPercentage;
                     const initialNumber = force.force.number;
                     force.force.number -= Math.round(casualties / force.force.attack);
-
-                    if (force.force.number < 0) {
-                        force.force.number = 0;
-                    }
+                    force.force.number = Math.max(force.force.number, 0); // Ensure no negative numbers
 
                     battleReport += `${force.force.name} - Initial: ${initialNumber}, Remaining: ${force.force.number}, Casualties: ${initialNumber - force.force.number}\n`;
                 }
@@ -199,74 +218,61 @@ async function handleBattleEnd(battleId) {
 
             currentForces = attacker.force;
 
-            // Assuming currentForces holds the forces retrieved from the database
+            // Update current forces from the battle results
             currentForces.forEach(currentForce => {
-                // Find the matching force in the updated attackerForces
                 const matchingForce = allAttackerForces.find(f => f.force.name === currentForce.force.name);
-
                 if (matchingForce) {
-                    // Add the surviving forces from the battle to the current forces
                     currentForce.force.number += matchingForce.force.number;
                 }
             });
 
-            // Handle any forces in attackerForces that were not present in currentForces
+            // Add any new forces from the battle
             allAttackerForces.forEach(newForce => {
                 const existingForce = currentForces.find(f => f.force.name === newForce.force.name);
-
                 if (!existingForce && newForce.force.number > 0) {
-                    // Add this new surviving force to currentForces
                     currentForces.push(newForce);
                 }
-
             });
+
             await pool.query('UPDATE wars SET attackerMachine = ? WHERE id = ?', [JSON.stringify(attackerMachine), battleId]);
-
-            await handleMachineBattleEnd(battleId);
-
+            battleReport += await handleMachineBattleEnd(battleId);
             // Calculate total raid capacity of surviving attacker forces
             const totalRaidCapacity = attackerForces.reduce((total, force) => total + (force.force.load * force.force.number), 0);
 
-            // Calculate raid amount for each resource
-            const raidAmounts = {
-                wood: Math.min(defender.wood, totalRaidCapacity / 5),
-                stone: Math.min(defender.stone, totalRaidCapacity / 5),
-                iron: Math.min(defender.iron, totalRaidCapacity / 5),
-                wheat: Math.min(defender.wheat, totalRaidCapacity / 5),
-                elixir: Math.min(defender.elixir, totalRaidCapacity / 5)
-            };
+            // Calculate initial raid amounts, ensuring we don't raid more than the defender has
+            const raidAmounts = ['wood', 'stone', 'iron', 'wheat', 'elixir'].reduce((result, resource) => {
+                result[resource] = Math.min(defender[resource], totalRaidCapacity / 5);
+                return result;
+            }, {});
 
             // Adjust resources if raid capacity exceeds one type of resource
-            let remainingCapacity = totalRaidCapacity - (raidAmounts.wood + raidAmounts.stone + raidAmounts.iron + raidAmounts.wheat + raidAmounts.elixir);
+            let remainingCapacity = totalRaidCapacity - Object.values(raidAmounts).reduce((sum, amount) => sum + amount, 0);
+
+            // Redistribute remaining capacity across resources proportionally to the defender's available resources
             ['wood', 'stone', 'iron', 'wheat', 'elixir'].forEach(resource => {
-                if (remainingCapacity > 0) {
+                if (remainingCapacity > 0 && defender[resource] > raidAmounts[resource]) {
                     const additionalRaid = Math.min(defender[resource] - raidAmounts[resource], remainingCapacity);
                     raidAmounts[resource] += additionalRaid;
                     remainingCapacity -= additionalRaid;
                 }
             });
 
-            // Retrieve the attacker's resource capacities
+            // Deduct raided resources from defender and add to attacker, within their capacity
             const attackerResourceCapacities = {
-                woodCapacity: attacker.woodCapacity,
-                stoneCapacity: attacker.stoneCapacity,
-                ironCapacity: attacker.ironCapacity,
-                wheatCapacity: attacker.wheatCapacity,
-                elixirCapacity: attacker.elixirCapacity
+                wood: attacker.woodCapacity,
+                stone: attacker.stoneCapacity,
+                iron: attacker.ironCapacity,
+                wheat: attacker.wheatCapacity,
+                elixir: attacker.elixirCapacity
             };
 
-            // Deduct raided resources from defender and add to attacker
             Object.keys(raidAmounts).forEach(resource => {
-                const capacityField = resource + 'Capacity';
-                const attackerCurrentResource = attacker[resource];
-                const capacityRemaining = attackerResourceCapacities[capacityField] - attackerCurrentResource;
-                const raidAmount = Math.min(raidAmounts[resource], capacityRemaining);
-
-                defender[resource] -= raidAmount;
+                const raidAmount = Math.min(raidAmounts[resource], attackerResourceCapacities[resource] - attacker[resource]);
+                defender[resource] = Math.max(defender[resource] - raidAmount, 0); // Ensure no negative resources
                 attacker[resource] += raidAmount;
-
                 battleReport += `Raided ${resource}: ${raidAmount}\n`;
             });
+
 
             // Update defender and attacker resources in the database
             await pool.query('UPDATE users SET wood = ?, stone = ?, iron = ?, wheat = ?, elixir = ?, `force` = ?, defence = ? WHERE playerToken = ?',
@@ -274,40 +280,57 @@ async function handleBattleEnd(battleId) {
 
             await pool.query('UPDATE users SET wood = ?, stone = ?, iron = ?, wheat = ?, elixir = ?, `force` = ? WHERE playerToken = ?',
                 [attacker.wood, attacker.stone, attacker.iron, attacker.wheat, attacker.elixir, JSON.stringify(currentForces), battle.attackerPlayerToken]);
-
         } else {
             winner = 'defender';
             battleReport += 'Defender won the battle.\n';
 
-            // Proceed with calculating casualties for both defender forces
+            // Combine all defender forces
             const allDefenderForces = [...defenderForces1, ...defenderForces2];
 
-            // Calculate total attack power
+            // Calculate total attack and defense power, excluding Spies
             const totalAttackPower = attackerForces.reduce((total, force) =>
                 force.force.name !== 'Spy' ? total + (force.force.attack * force.force.number) : total, 0);
 
-            // Calculate total defense power (excluding spies)
             const totalDefensePower = allDefenderForces.reduce((total, unit) =>
                 unit.force.name !== 'Spy' ? total + (unit.force.defence * unit.force.number) : total, 0);
 
-            // Determine remaining attack power (it will be used as total attack power for casualties)
-            let remainingAttackPower = totalAttackPower;
-
-            // Proceed with calculating casualties for defender forces
+            // Apply King damage to defender forces
+            const kingDamage = totalAttackPower * 0.001;
             allDefenderForces.forEach(unit => {
-                if (unit.force.name !== 'Spy') {
+                if (unit.force.name === 'King') {
+                    if (kingDamage >= unit.force.defence) {
+                        battleReport += 'King defender eliminated.\n';
+                        unit.force.number = 0; // King eliminated
+                    } else {
+                        battleReport += 'King defender took no damage.\n';
+                    }
+                }
+            });
+
+            // Apply King damage to attacker forces
+            const attackerKingDamage = totalDefensePower * 0.001;
+            attackerForces.forEach(force => {
+                if (force.force.name === 'King') {
+                    if (attackerKingDamage >= force.force.defence) {
+                        battleReport += 'Attacker King eliminated.\n';
+                        force.force.number = 0;
+                    } else {
+                        battleReport += 'Attacker King took no damage.\n';
+                    }
+                }
+            });
+
+            // Calculate defender casualties
+            const remainingAttackPower = totalAttackPower;
+            allDefenderForces.forEach(unit => {
+                if (unit.force.name !== 'Spy' && unit.force.name !== 'King') {
                     const forceDefensePower = unit.force.defence * unit.force.number;
                     const damageProportion = forceDefensePower / totalDefensePower;
-                    const damageDealt = remainingAttackPower * damageProportion; // Damage the unit takes based on its proportion
+                    const damageDealt = remainingAttackPower * damageProportion;
 
                     const initialNumber = unit.force.number;
-                    unit.force.number -= Math.round(damageDealt / unit.force.defence);
+                    unit.force.number = Math.max(0, unit.force.number - Math.round(damageDealt / unit.force.defence));
 
-                    if (unit.force.number < 0) {
-                        unit.force.number = 0; // Ensure no negative values
-                    }
-
-                    // Add to the battle report
                     battleReport += `${unit.force.name} - Initial: ${initialNumber}, Remaining: ${unit.force.number}, Casualties: ${initialNumber - unit.force.number}\n`;
                 }
             });
@@ -318,19 +341,20 @@ async function handleBattleEnd(battleId) {
 
             await pool.query('UPDATE users SET `force` = ? WHERE playerToken = ?',
                 [JSON.stringify(defenderForces2), battle.defenderPlayerToken]);
-
-
         }
 
-        battleReport += `Final attacker resources: Wood: ${attacker.wood}, Stone: ${attacker.stone}, Iron: ${attacker.iron}, Wheat: ${attacker.wheat}\n`;
-        battleReport += `Final defender resources: Wood: ${defender.wood}, Stone: ${defender.stone}, Iron: ${defender.iron}, Wheat: ${defender.wheat}\n`;
+        // Display final resource amounts for attacker and defender
+        battleReport += `Final attacker resources: Wood: ${attacker.wood}, Stone: ${attacker.stone}, Iron: ${attacker.iron}, Wheat: ${attacker.wheat}, Elixir: ${attacker.elixir}\n`;
+        battleReport += `Final defender resources: Wood: ${defender.wood}, Stone: ${defender.stone}, Iron: ${defender.iron}, Wheat: ${defender.wheat}, Elixir: ${defender.elixir}\n`;
 
+        // Log the battle report
         console.log(battleReport);
 
+        // Update war result and status in the database
         await pool.query('UPDATE wars SET result = ?, warStatus = "finished" WHERE id = ?',
             [JSON.stringify(battleReport), battleId]);
-
-    } catch (error) {
+    }
+    catch (error) {
         console.error('Error handling battle end:', error);
     }
 };
@@ -514,122 +538,90 @@ async function handleMachineBattleEnd(battleId) {
 
         if (!battle) {
             console.error(`Battle with ID ${battleId} not found.`);
-            return;
+            return `Battle with ID ${battleId} not found.`;
         }
 
         const attackerForces = battle.attackerMachine;
-
-        let battleReport = `\nBattle ${battleId} ended. `;
-        let winner;
+        let battleReport = `Machine action for ${battleId} ended.\n `;
         let buildingsDamagedReport = '';
 
         const [defenderBuildings] = await pool.query('SELECT * FROM userbuildings WHERE playerToken = ?', [battle.defenderPlayerToken]);
+        const defenderBuildingsData = defenderBuildings[0];
 
-        console.log('Processing machine forces...');
+        battleReport += 'Processing machine forces...\n';
+
+        // Helper function to process building attack
+        async function processBuildingAttack(targetBuilding, attackPower, forceName) {
+            if (defenderBuildingsData && defenderBuildingsData[targetBuilding] != null) {
+                const building = defenderBuildingsData[targetBuilding];
+
+                if (building.isActive === 1) {
+                    building.power -= attackPower;
+                    battleReport += `Dealt ${attackPower} damage to ${targetBuilding}. Remaining HP: ${building.power}\n`;
+
+                    if (building.power <= 0) {
+                        building.power = 0; // Set the building's HP to 0 if it drops below 0
+                        buildingsDamagedReport += `${targetBuilding} has been destroyed.\n`;
+                        battleReport += (`${targetBuilding} has been destroyed.\n`);
+                        defenderBuildings[0][targetBuilding] = null; // Remove the building if HP is 0
+                    } else {
+                        buildingsDamagedReport += `${targetBuilding} remaining HP: ${building.power}\n`;
+                    }
+                    
+
+                    const query = `UPDATE userbuildings SET ${targetBuilding} = JSON_SET(${targetBuilding}, '$.power', ?, '$.isActive', ?) WHERE playerToken = ?`;
+                    await pool.query(query, [building.power, building.isActive, battle.defenderPlayerToken]);
+                } else {
+                    battleReport += `${targetBuilding} is not active.\n`;
+                }
+            } else {
+                battleReport += `${targetBuilding} does not exist in defender buildings.\n`;
+            }
+        }
+
+        // Helper function to process Balloon attack
+        async function processBalloonAttack(targetBuilding, balloonPower, force) {
+            const defencePower = defenderBuildingsData['AirDefense'].attack;
+            battleReport += `Air defense power: ${defencePower}\n`;
+
+            if (defencePower >= balloonPower) {
+                battleReport += 'All Balloons eliminated!\n';
+                force.force.number = 0;
+            } else {
+                const remainingBalloonPower = balloonPower - defencePower;
+                const remainingBalloonNumber = Math.ceil(remainingBalloonPower / force.force.attack);
+                battleReport += `${remainingBalloonNumber} Balloons survived.\n`;
+
+                force.force.number = remainingBalloonNumber;
+                const attackPower = remainingBalloonNumber * force.force.attack;
+                await processBuildingAttack(targetBuilding, attackPower, 'Balloon');
+            }
+        }
 
         // Process machine forces attacking buildings
         for (const force of attackerForces) {
+            const targetBuilding = force.force.target;
+            const attackPower = force.force.number * force.force.attack;
+
+            battleReport += `Attacking ${targetBuilding} with ${force.force.name}.\n`;
+
             if (['BatteringRam', 'HeavyCatapult'].includes(force.force.name)) {
-                const targetBuilding = force.force.target;
-
-                console.log(`Attacking ${targetBuilding} with ${force.force.name}.`);
-
-                // Check if targetBuilding exists in defenderBuildings and is not null
-                if (defenderBuildings[0] && defenderBuildings[0][targetBuilding] != null) {
-                    const building = defenderBuildings[0][targetBuilding];
-
-                    // Check if the building is active
-                    if (building.isActive === 1) {
-                        const attackPower = force.force.number * force.force.attack;
-                        building.power -= attackPower;
-
-                        console.log(`Dealt ${attackPower} damage to ${targetBuilding}. Remaining HP: ${building.power}`);
-
-                        // Check if the building is destroyed
-                        if (building.power <= 0) {
-                            buildingsDamagedReport += `${targetBuilding} has been destroyed.\n`;
-                            console.log(`${targetBuilding} has been destroyed.`);
-                            defenderBuildings[0][targetBuilding] = null; // Remove the building if HP is 0
-                        } else {
-                            buildingsDamagedReport += `${targetBuilding} remaining HP: ${building.power}\n`;
-                        }
-
-                        // Construct the query to update the damaged building's power and isActive fields
-                        const query = `UPDATE userbuildings SET ${targetBuilding} = JSON_SET(${targetBuilding}, '$.power', ?, '$.isActive', ?) WHERE playerToken = ?`;
-                        await pool.query(query, [building.power, building.isActive, battle.defenderPlayerToken]);
-
-                    } else {
-                        console.log(`${targetBuilding} is not active.`);
-                    }
-                } else {
-                    console.log(`${targetBuilding} does not exist in defenderBuildings.`);
-                }
-
-            } if (force.force.name === 'Balloon') {
-                const targetBuilding = force.force.target;
-
-                console.log(`Attacking ${targetBuilding} with ${force.force.name}.`);
-
-                // Get AirDefense power from defender buildings
-                const defencePower = defenderBuildings[0]['AirDefense'].attack;
-                const balloonPower = force.force.number * force.force.attack;
-
-                // Damage calculation for Balloons
-                if (defencePower >= balloonPower) {
-                    console.log('All Balloons eliminated!');
-                    // Eliminate all Balloons
-                    force.force.number = 0;
-                } else {
-                    // Calculate the remaining Balloons after the AirDefense attack
-                    const remainingBalloonPower = balloonPower - defencePower;
-                    const remainingBalloonNumber = Math.ceil(remainingBalloonPower / force.force.attack);
-
-                    console.log(`${remainingBalloonNumber} Balloons survived.`);
-
-                    // Update the number of surviving Balloons
-                    force.force.number = remainingBalloonNumber;
-
-                    // Now the surviving Balloons attack the target building
-                    const attackPower = force.force.number * force.force.attack;
-
-                    if (defenderBuildings[0] && defenderBuildings[0][targetBuilding] != null) {
-                        const building = defenderBuildings[0][targetBuilding];
-
-                        if (building.isActive === 1) {
-                            building.power -= attackPower;
-
-                            console.log(`Dealt ${attackPower} damage to ${targetBuilding}. Remaining HP: ${building.power}`);
-
-                            // Check if the building is destroyed
-                            if (building.power <= 0) {
-                                buildingsDamagedReport += `${targetBuilding} has been destroyed.\n`;
-                                console.log(`${targetBuilding} has been destroyed.`);
-                                defenderBuildings[0][targetBuilding] = null; // Remove the building if HP is 0
-                            } else {
-                                buildingsDamagedReport += `${targetBuilding} remaining HP: ${building.power}\n`;
-                            }
-
-                            // Update damaged building in the database
-                            const query = `UPDATE userbuildings SET ${targetBuilding} = JSON_SET(${targetBuilding}, '$.power', ?, '$.isActive', ?) WHERE playerToken = ?`;
-                            await pool.query(query, [building.power, building.isActive, battle.defenderPlayerToken]);
-
-                        } else {
-                            console.log(`${targetBuilding} is not active.`);
-                        }
-                    } else {
-                        console.log(`${targetBuilding} does not exist in defenderBuildings.`);
-                    }
-                }
+                await processBuildingAttack(targetBuilding, attackPower, force.force.name);
+            } else if (force.force.name === 'Balloon') {
+                const balloonPower = attackPower;
+                await processBalloonAttack(targetBuilding, balloonPower, force);
             }
-
         }
 
-        console.log('Machine battle resolution completed successfully.');
+        battleReport += 'Machine battle resolution completed successfully.\n';
+        return battleReport;
 
     } catch (error) {
         console.error('Error handling machine battle end:', error);
+        return `Error handling machine battle end: ${error.message}`;
     }
 }
+
 
 router.post('/startWar', async (req, res) => {
     const { attackerToken, defenderToken, attackerForce, attackerMachine, mode } = req.body;

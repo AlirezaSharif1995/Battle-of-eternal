@@ -1,18 +1,19 @@
 const mysql = require('mysql2');
 
 const connection = mysql.createConnection({
-    host: 'localhost',
-    user: 'root',
-    password: 'Alireza1995!',
-    database: 'battle-of-eternals',
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
+  host: 'localhost',
+  user: 'root',
+  password: 'Alireza1995!',
+  database: 'battle-of-eternals',
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0
 });
+
 
 // Function to update player resources
 function updatePlayerResources() {
-  const query = 'SELECT playerToken, username, wood, stone, wheat, iron, elixir, woodLevel, elixirLevel, stoneLevel, wheatLevel, ironLevel, ironCapacity, wheatCapacity, stoneCapacity, woodCapacity FROM users';
+  const query = 'SELECT playerToken, username, wood, stone, wheat, iron, elixir, woodLevel, elixirLevel, stoneLevel, wheatLevel, ironLevel, ironCapacity, wheatCapacity, stoneCapacity, woodCapacity, elixirCapacity FROM users';
 
   connection.query(query, (error, results) => {
     if (error) {
@@ -26,7 +27,7 @@ function updatePlayerResources() {
       let updatedStone = player.stone + player.stoneLevel;
       let updatedWheat = player.wheat + player.wheatLevel;
       let updatedIron = player.iron + player.ironLevel;
-      let updatedelixir = player.elixir + player.elixirLevel;
+      let updatedElixir = player.elixir + player.elixirLevel; // Corrected variable name
 
       const maxWoodCapacity = player.woodCapacity;
       const maxStoneCapacity = player.stoneCapacity;
@@ -46,14 +47,14 @@ function updatePlayerResources() {
       if (updatedIron > maxIronCapacity) {
         updatedIron = maxIronCapacity;
       }
-      if (updatedelixir > maxElixirCapacity) {
-        updatedelixir = maxElixirCapacity;
+      if (updatedElixir > maxElixirCapacity) {  // Corrected variable name
+        updatedElixir = maxElixirCapacity;      // Corrected variable name
       }
 
       // Update query
       const updateQuery = 'UPDATE users SET wood = ?, stone = ?, wheat = ?, iron = ?, elixir = ? WHERE playerToken = ?';
 
-      connection.query(updateQuery, [updatedWood, updatedStone, updatedWheat, updatedIron, updatedelixir, player.playerToken], updateError => {
+      connection.query(updateQuery, [updatedWood, updatedStone, updatedWheat, updatedIron, updatedElixir, player.playerToken], updateError => {
         if (updateError) {
           console.error(`Error updating resources for ${player.username}:`, updateError);
           return;
@@ -62,5 +63,6 @@ function updatePlayerResources() {
     });
   });
 }
+
 
 module.exports = updatePlayerResources;
