@@ -400,19 +400,19 @@ async function handleSpyBattleEnd(battleId) {
             winner = 'attacker';
             spyBattleReport += 'Attacker won the spy battle.\n';
 
-            // All defender forces wiped out (excluding Spies)
-            defenderForces1.forEach(unit => {
-                if (unit.force.name === 'Spy') {
-                    unit.force.number = 0;
-                }
-            });
+            // // All defender forces wiped out (excluding Spies)
+            // defenderForces1.forEach(unit => {
+            //     if (unit.force.name === 'Spy') {
+            //         unit.force.number = 0;
+            //     }
+            // });
 
-            // All defender forces wiped out (excluding Spies)
-            defenderForces2.forEach(unit => {
-                if (unit.force.name === 'Spy') {
-                    unit.force.number = 0;
-                }
-            });
+            // // All defender forces wiped out (excluding Spies)
+            // defenderForces2.forEach(unit => {
+            //     if (unit.force.name === 'Spy') {
+            //         unit.force.number = 0;
+            //     }
+            // });
 
             // Calculate attacker casualties
             const remainingAttackPower = totalDefenderSpyPower; // Total defense power equals total attack power used
@@ -492,23 +492,23 @@ async function handleSpyBattleEnd(battleId) {
                 return total;
             }, 0); // Total defense power excluding spies
 
-            // Calculate casualties proportionally based on their power
-            [...defenderForces1, ...defenderForces2].forEach(unit => {
-                if (unit.force.name === 'Spy') {
-                    const forcePower = unit.force.defence * unit.force.number; // Calculate defense power
-                    const casualtyProportion = forcePower / totalDefenderPower; // Determine proportion
-                    const casualties = Math.round(totalDamage * casualtyProportion); // Calculate casualties
+            // // Calculate casualties proportionally based on their power
+            // [...defenderForces1, ...defenderForces2].forEach(unit => {
+            //     if (unit.force.name === 'Spy') {
+            //         const forcePower = unit.force.defence * unit.force.number; // Calculate defense power
+            //         const casualtyProportion = forcePower / totalDefenderPower; // Determine proportion
+            //         const casualties = Math.round(totalDamage * casualtyProportion); // Calculate casualties
 
-                    const initialNumber = unit.force.number;
-                    unit.force.number -= casualties;
+            //         const initialNumber = unit.force.number;
+            //         unit.force.number -= casualties;
 
-                    if (unit.force.number < 0) {
-                        unit.force.number = 0; // Prevent negative values
-                    }
+            //         if (unit.force.number < 0) {
+            //             unit.force.number = 0; // Prevent negative values
+            //         }
 
-                    spyBattleReport += `${unit.force.name} - Initial: ${initialNumber}, Remaining: ${unit.force.number}, Casualties: ${initialNumber - unit.force.number}\n`;
-                }
-            });
+            //         spyBattleReport += `${unit.force.name} - Initial: ${initialNumber}, Remaining: ${unit.force.number}, Casualties: ${initialNumber - unit.force.number}\n`;
+            //     }
+            // });
         }
 
         // Update the database with new force numbers
@@ -621,7 +621,6 @@ async function handleMachineBattleEnd(battleId) {
         return `Error handling machine battle end: ${error.message}`;
     }
 }
-
 
 router.post('/startWar', async (req, res) => {
     const { attackerToken, defenderToken, attackerForce, attackerMachine, mode } = req.body;

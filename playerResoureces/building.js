@@ -38,11 +38,11 @@ router.get('/', async (req, res) => {
 
 router.post('/buildingPost', async (req, res) => {
 
-    const userId = req.body.id;
+    const playerToken = req.body.id;
 
     try {
         // Check if the user exists in the database
-        const [existingUser] = await pool.query('SELECT * FROM userbuildings WHERE playerToken = ?', [userId]);
+        const [existingUser] = await pool.query('SELECT * FROM userbuildings WHERE playerToken = ?', [playerToken]);
 
         if (existingUser.length === 0) {
             return res.status(404).json({ error: 'User not found' });

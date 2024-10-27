@@ -183,17 +183,35 @@ router.post('/getCityPos', async (req, res) => {
     }
 });
 
-router.post('/getPlayerInfoUsername', async (req, res) => {
-    const { username } = req.body;
+router.post('/getPlayerInfo', async (req, res) => {
+    const { playerToken } = req.body;
 
     try {
-        const [existingUser] = await pool.query('SELECT * FROM users WHERE username = ?', [username]);
+        const [existingUser] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [playerToken]);
 
         if (existingUser.length === 0) {
             return res.status(404).json({ error: 'User not found' });
         }
 
-        res.status(200).json({ existingUser });
+        const user = {
+            username: existingUser[0].username,
+            avatarCode: existingUser[0].avatarCode,
+            bio: existingUser[0].bio,
+            wheat: existingUser[0].wheat,
+            stone: existingUser[0].stone,
+            wood: existingUser[0].wood,
+            iron: existingUser[0].iron,
+            elixir: existingUser[0].elixir,
+            clan: existingUser[0].clan_id,
+            role: existingUser[0].clan_role,
+            avatarCode: existingUser[0].avatarCode,
+            recivedRequests: existingUser[0].recivedRequests,
+            cities: existingUser[0].cities,
+            cityName: existingUser[0].cityName,
+            force: existingUser[0].force
+        };
+
+        res.status(200).json(user);
 
         
     } catch (error) {
