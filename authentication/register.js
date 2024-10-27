@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcrypt');
 const mysql = require('mysql2/promise');
+const { json } = require('body-parser');
 
 const pool = mysql.createPool({
     host: 'localhost',
@@ -46,9 +47,17 @@ router.post('/', async (req, res) => {
 
 
         const token = generateRandomToken();
+        const defaultBuildings = [
+            { building_id: 1, level: 1, position: { x: 0, y: 0 } },
+            { building_id: 2, level: 1, position: { x: 1, y: 0 } }, 
+            { building_id: 3, level: 1, position: { x: 2, y: 0 } }, 
+            { building_id: 4, level: 1, position: { x: 3, y: 0 } }, 
+            { building_id: 5, level: 1, position: { x: 4, y: 0 } }
+        ];
+        
         // Insert new user into the database
         await pool.query('INSERT INTO users (playerToken, email, password_hash, username, lastUpdated, citypositionX, citypositionY) VALUES (?, ?, ?, ?, ?, ?, ?)', [token, email, hashedPassword, username, now, x, y]);
-        await pool.query('INSERT INTO userbuildings (playerToken) VALUES (?)', [token]);
+        await pool.query('INSERT INTO playerbuildings (playerToken, buildings) VALUES (?, ?)', [token, JSON.stringify(defaultBuildings)]);
 
         res.status(201).json({ message: 'User registered successfully', playerToken: token });
     } catch (error) {

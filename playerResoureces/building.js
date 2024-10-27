@@ -13,44 +13,21 @@ const pool = mysql.createPool({
     queueLimit: 0
 });
 
-router.get('/', async (req, res) => {
+router.post('/', async (req, res) => {
 
-    const userId = req.body.id;
+    const {playerToken} = req.body;
 
     try {
         // Check if the user exists in the database
-        const [existingUser] = await pool.query('SELECT * FROM userbuildings WHERE playerToken = ?', [userId]);
+        const [existingUser] = await pool.query('SELECT * FROM playerbuildings WHERE playerToken = ?', [playerToken]);
 
         if (existingUser.length === 0) {
             return res.status(404).json({ error: 'User not found' });
         }
 
-        const buildingInformation = existingUser[0];
+        const buildingInformation = existingUser[0].buildings;
 
-        res.status(200).json({ message: 'Data found!', buildingInformation });
-
-    } catch {
-        console.error('Error find data:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-
-});
-
-router.post('/buildingPost', async (req, res) => {
-
-    const playerToken = req.body.id;
-
-    try {
-        // Check if the user exists in the database
-        const [existingUser] = await pool.query('SELECT * FROM userbuildings WHERE playerToken = ?', [playerToken]);
-
-        if (existingUser.length === 0) {
-            return res.status(404).json({ error: 'User not found' });
-        }
-
-        const buildingInformation = existingUser[0];
-
-        res.status(200).json({ message: 'Data found!', buildingInformation });
+        res.status(200).json(buildingInformation);
 
     } catch {
         console.error('Error find data:', error);
