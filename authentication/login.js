@@ -32,7 +32,7 @@ router.post('/', async (req, res) => {
             return res.status(401).json({ error: 'Incorrect password' });
         }
 
-        const user = {
+        const player = {
             playerToken: existingUser[0].playerToken,
             username: existingUser[0].username,
             avatarCode: existingUser[0].avatarCode,
@@ -48,7 +48,7 @@ router.post('/', async (req, res) => {
             force: existingUser[0].force
         };
 
-        res.status(200).json({ message: 'Login successful', user });
+        res.status(200).json({ message: 'Login successful', playerToken: player.playerToken });
     } catch (error) {
         console.error('Error logging in:', error);
         res.status(500).json({ error: 'Internal server error' });

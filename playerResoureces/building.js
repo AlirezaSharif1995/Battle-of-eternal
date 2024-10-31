@@ -16,7 +16,7 @@ const pool = mysql.createPool({
 router.post('/', async (req, res) => {
 
     const {playerToken} = req.body;
-
+console.log(playerToken)
     try {
         // Check if the user exists in the database
         const [existingUser] = await pool.query('SELECT * FROM playerbuildings WHERE playerToken = ?', [playerToken]);
@@ -36,26 +36,47 @@ router.post('/', async (req, res) => {
 
 });
 
-router.post('/updateTable', async (req, res) => {
+router.post('/updatePosition', async (req, res) => {
+    const { playerToken, buildingID, newPosition } = req.body;
 
-    const { userId, buildingName, buildingData } = req.body;
+    if (!playerToken || !buildingID || !newPosition || typeof newPosition.x !== 'number' || typeof newPosition.y !== 'number') {
+        return res.status(400).json({ error: 'Invalid input' });
+    }
 
     try {
 
-        const [existingUser] = await pool.query('SELECT * FROM userbuildings WHERE playerToken = ?', [userId]);
+        const [playerData] = await pool.execute(
+            'SELECT buildings FROM playerbuildings WHERE playerToken = ?',
+            [playerToken]
+        );
 
-        if (existingUser.length === 0) {
-            return res.status(404).json({ error: 'User not found' });
+        if (playerData.length === 0) {
+            return res.status(404).json({ error: 'Player not found' });
         }
 
-    const sql = `UPDATE userbuildings SET ${buildingName} = ? WHERE playerToken = ?`;
-    await pool.query(sql, [JSON.stringify(buildingData), userId]);
-    return res.status(200).json({ message: 'Building data updated successfully' });
+        let buildings = (playerData[0].buildings);
 
+        const buildingToUpdate = buildings.find(b => b.building_id === buildingID);
+        if (buildingToUpdate) {
+            buildingToUpdate.position.x = newPosition.x;
+            buildingToUpdate.position.y = newPosition.y;
+        } else {
+            return res.status(404).json({ error: 'Building not found' });
+        }
+
+        const updatedBuildingsJson = JSON.stringify(buildings);
+        await pool.execute(
+            'UPDATE playerbuildings SET buildings = ? WHERE playerToken = ?',
+            [updatedBuildingsJson, playerToken]
+        );
+
+        res.json({ message: 'Building position updated successfully' });
     } catch (error) {
-        console.error('Error find data:', error);
+        console.error(error);
         res.status(500).json({ error: 'Internal server error' });
-    }
+    } 
 });
+
+
 
 module.exports = router;

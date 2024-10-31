@@ -48,10 +48,10 @@ router.post('/', async (req, res) => {
 
         const token = generateRandomToken();
         const defaultBuildings = [
-            { building_id: 1, level: 1, position: { x: 0, y: 0 } },
-            { building_id: 2, level: 1, position: { x: 1, y: 0 } }, 
-            { building_id: 3, level: 1, position: { x: 2, y: 0 } }, 
-            { building_id: 4, level: 1, position: { x: 3, y: 0 } }, 
+            { building_id: 1, level: 1, position: { x: -303, y: 83 } },
+            { building_id: 2, level: 1, position: { x: -280, y: -147 } }, 
+            { building_id: 3, level: 1, position: { x: 213, y: -195 } }, 
+            { building_id: 4, level: 1, position: { x: 134, y: 115 } }, 
             { building_id: 5, level: 1, position: { x: 4, y: 0 } }
         ];
         

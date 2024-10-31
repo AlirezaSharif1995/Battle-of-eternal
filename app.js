@@ -3,6 +3,7 @@ const socketIo = require('socket.io');
 const http = require('http');
 const path = require('path');
 const socket01 = require('./Sockets/socket01');
+const compression = require('compression');
 
 const { registrationRouter, loginRouter, forgetPassword, playerInfo } = require('./authentication');
 const { building, playerResources, reportHandler, prize } = require('./playerResoureces');
@@ -16,6 +17,7 @@ const updatePlayerResources = require('./playerResoureces/updateResources');
 
 
 const app = express();
+app.use(compression());
 app.use(express.json());
 
 app.use('/register', registrationRouter);
