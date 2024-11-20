@@ -13,28 +13,68 @@ const pool = mysql.createPool({
     queueLimit: 0
 });
 
+
 router.post('/', async (req, res) => {
+    const { playerToken } = req.body;
 
-    const {playerToken} = req.body;
-console.log(playerToken)
     try {
-        // Check if the user exists in the database
-        const [existingUser] = await pool.query('SELECT * FROM playerbuildings WHERE playerToken = ?', [playerToken]);
+        const [playerBuildingRows] = await pool.query(
+            'SELECT buildings FROM playerbuildings WHERE playerToken = ?',
+            [playerToken]
+        );
 
-        if (existingUser.length === 0) {
-            return res.status(404).json({ error: 'User not found' });
+        if (playerBuildingRows.length === 0) {
+            return res.status(404).json({ error: 'Player not found' });
         }
 
-        const buildingInformation = existingUser[0].buildings;
+        const playerBuildings = playerBuildingRows[0].buildings;
 
-        res.status(200).json(buildingInformation);
+        const buildingQueries = playerBuildings.map(({ building_id, level }) =>
+            pool.query(
+                `SELECT level, stats, cost, build_time 
+                 FROM buildinglevels 
+                 WHERE building_id = ? AND (level = ? OR level = ?)`,
+                [building_id, level, level + 1] // Fetch data for both current and next levels
+            )
+        );
 
-    } catch {
-        console.error('Error find data:', error);
+        const results = await Promise.all(buildingQueries);
+
+        const combinedData = playerBuildings.map((building, index) => {
+            const rows = results[index][0];
+            let currentLevelData = { stats: null };
+            let nextLevelData = { stats: null, cost: null, build_time: null };
+
+            rows.forEach(row => {
+                const parsedStats = typeof row.stats === 'string' ? JSON.parse(row.stats) : row.stats;
+                const parsedCost = typeof row.cost === 'string' ? JSON.parse(row.cost) : row.cost;
+
+                if (row.level === building.level) {
+                    currentLevelData = {
+                        stats: parsedStats,
+                    };
+                } else if (row.level === building.level + 1) {
+                    nextLevelData = {
+                        stats: parsedStats,
+                        cost: parsedCost,
+                        build_time: row.build_time,
+                    };
+                }
+            });
+
+            return {
+                ...building,
+                current_level: currentLevelData,
+                next_level: nextLevelData,
+            };
+        });
+
+        res.status(200).json(combinedData);
+    } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
     }
-
 });
+
 
 router.post('/updatePosition', async (req, res) => {
     const { playerToken, buildingID, newPosition } = req.body;
