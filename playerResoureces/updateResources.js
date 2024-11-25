@@ -13,7 +13,7 @@ const connection = mysql.createConnection({
 
 // Function to update player resources
 function updatePlayerResources() {
-  const query = 'SELECT playerToken, username, wood, stone, wheat, iron, elixir, woodLevel, elixirLevel, stoneLevel, wheatLevel, ironLevel, ironCapacity, wheatCapacity, stoneCapacity, woodCapacity, elixirCapacity FROM users';
+  const query = 'SELECT playerToken, username, wood, stone, wheat, iron, elixir, woodrate, stonerate, ironrate, wheatrate, elixirrate, capacity FROM users';
 
   connection.query(query, (error, results) => {
     if (error) {
@@ -23,32 +23,28 @@ function updatePlayerResources() {
 
     results.forEach(player => {
 
-      let updatedWood = player.wood + player.woodLevel;
-      let updatedStone = player.stone + player.stoneLevel;
-      let updatedWheat = player.wheat + player.wheatLevel;
-      let updatedIron = player.iron + player.ironLevel;
-      let updatedElixir = player.elixir + player.elixirLevel; // Corrected variable name
+      let updatedWood = player.wood + player.woodrate;
+      let updatedStone = player.stone + player.stonerate;
+      let updatedWheat = player.wheat + player.wheatrate;
+      let updatedIron = player.iron + player.ironrate;
+      let updatedElixir = player.elixir + player.elixirrate; // Corrected variable name
 
-      const maxWoodCapacity = player.woodCapacity;
-      const maxStoneCapacity = player.stoneCapacity;
-      const maxWheatCapacity = player.wheatCapacity;
-      const maxIronCapacity = player.ironCapacity;
-      const maxElixirCapacity = player.elixirCapacity;
+      const maxCapacity = player.capasity;
 
-      if (updatedWood > maxWoodCapacity) {
-        updatedWood = maxWoodCapacity;
+      if (updatedWood > maxCapacity) {
+        updatedWood = maxCapacity;
       }
-      if (updatedStone > maxStoneCapacity) {
-        updatedStone = maxStoneCapacity;
+      if (updatedStone > maxCapacity) {
+        updatedStone = maxCapacity;
       }
-      if (updatedWheat > maxWheatCapacity) {
-        updatedWheat = maxWheatCapacity;
+      if (updatedWheat > maxCapacity) {
+        updatedWheat = maxCapacity;
       }
-      if (updatedIron > maxIronCapacity) {
-        updatedIron = maxIronCapacity;
+      if (updatedIron > maxCapacity) {
+        updatedIron = maxCapacity;
       }
-      if (updatedElixir > maxElixirCapacity) {  // Corrected variable name
-        updatedElixir = maxElixirCapacity;      // Corrected variable name
+      if (updatedElixir > maxCapacity) {  // Corrected variable name
+        updatedElixir = maxCapacity;      // Corrected variable name
       }
 
       // Update query

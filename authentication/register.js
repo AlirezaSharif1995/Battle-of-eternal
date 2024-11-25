@@ -42,9 +42,7 @@ router.post('/', async (req, res) => {
 
         // Hash the password
         const hashedPassword = await bcrypt.hash(password, 10);
-        const now = new Date();
-        const { x, y } = await generateRandomPosition(pool);
-
+        // const { x, y } = await generateRandomPosition(pool);
 
         const token = generateRandomToken();
         const defaultBuildings = [
@@ -56,7 +54,7 @@ router.post('/', async (req, res) => {
         ];
         
         // Insert new user into the database
-        await pool.query('INSERT INTO users (playerToken, email, password_hash, username, lastUpdated, citypositionX, citypositionY) VALUES (?, ?, ?, ?, ?, ?, ?)', [token, email, hashedPassword, username, now, x, y]);
+        await pool.query('INSERT INTO users (playerToken, email, password_hash, username) VALUES (?, ?, ?, ?)', [token, email, hashedPassword, username]);
         await pool.query('INSERT INTO playerbuildings (playerToken, buildings) VALUES (?, ?)', [token, JSON.stringify(defaultBuildings)]);
 
         res.status(201).json({ message: 'User registered successfully', playerToken: token });
@@ -65,6 +63,8 @@ router.post('/', async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
+
+// HERE
 
 router.post('/addCity', async (req, res) => {
     const { playerEmail, cityName, cityPositionX, cityPositionY } = req.body;

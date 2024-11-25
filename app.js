@@ -54,9 +54,9 @@ app.get('/book', (req, res) => {
   res.sendFile(path.join(__dirname, 'config2', 'Book1.csv'));
 });
 
-// const INTERVAL_TIME = 60 * 1000;
-// updatePlayerResources();
-// setInterval(updatePlayerResources, INTERVAL_TIME);
+const INTERVAL_TIME = 60 * 1000;
+updatePlayerResources();
+setInterval(updatePlayerResources, INTERVAL_TIME);
 
 const server = http.createServer(app);
 const io = socketIo(server);

@@ -37,15 +37,10 @@ router.post('/', async (req, res) => {
             username: existingUser[0].username,
             avatarCode: existingUser[0].avatarCode,
             bio: existingUser[0].bio,
-            cities: existingUser[0].cities,
             wheat: existingUser[0].wheat,
             stone: existingUser[0].stone,
             wood: existingUser[0].wood,
             iron: existingUser[0].iron,
-            clan: existingUser[0].clan_id,
-            role: existingUser[0].clan_role,
-            recivedRequests: existingUser[0].recivedRequests,
-            force: existingUser[0].force
         };
 
         res.status(200).json({ message: 'Login successful', playerToken: player.playerToken });
@@ -54,6 +49,9 @@ router.post('/', async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
+
+// here 
+
 
 router.post('/playerToken', async (req, res) => {
     const { playerToken } = req.body;

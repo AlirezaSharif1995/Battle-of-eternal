@@ -12,6 +12,42 @@ const pool = mysql.createPool({
     queueLimit: 0
 });
 
+router.post('/getPlayerInfo', async (req, res) => {
+    const { playerToken } = req.body;
+
+    try {
+        const [existingUser] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [playerToken]);
+
+        if (existingUser.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const user = {
+            username: existingUser[0].username,
+            avatarCode: existingUser[0].avatarCode,
+            bio: existingUser[0].bio,
+            wheat: existingUser[0].wheat,
+            stone: existingUser[0].stone,
+            wood: existingUser[0].wood,
+            iron: existingUser[0].iron,
+            elixir: existingUser[0].elixir,
+            avatarCode: existingUser[0].avatarCode,
+            civilization: existingUser[0].civilization,
+            population: existingUser[0].population
+        };
+
+        res.status(200).json(user);
+
+        
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+
+});
+
+
+
 router.post('/', async (req, res) => {
     const { playerToken } = req.body;
     try {
@@ -183,43 +219,6 @@ router.post('/getCityPos', async (req, res) => {
     }
 });
 
-router.post('/getPlayerInfo', async (req, res) => {
-    const { playerToken } = req.body;
-
-    try {
-        const [existingUser] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [playerToken]);
-
-        if (existingUser.length === 0) {
-            return res.status(404).json({ error: 'User not found' });
-        }
-
-        const user = {
-            username: existingUser[0].username,
-            avatarCode: existingUser[0].avatarCode,
-            bio: existingUser[0].bio,
-            wheat: existingUser[0].wheat,
-            stone: existingUser[0].stone,
-            wood: existingUser[0].wood,
-            iron: existingUser[0].iron,
-            elixir: existingUser[0].elixir,
-            clan: existingUser[0].clan_id,
-            role: existingUser[0].clan_role,
-            avatarCode: existingUser[0].avatarCode,
-            recivedRequests: existingUser[0].recivedRequests,
-            cities: existingUser[0].cities,
-            cityName: existingUser[0].cityName,
-            force: existingUser[0].force
-        };
-
-        res.status(200).json(user);
-
-        
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'Internal server error' });
-    }
-
-});
 
 function generateRandomToken() {
     let token = '';
