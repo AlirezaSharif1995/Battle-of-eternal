@@ -52,7 +52,6 @@ router.post('/', async (req, res) => {
 
 // here 
 
-
 router.post('/playerToken', async (req, res) => {
     const { playerToken } = req.body;
     try {
