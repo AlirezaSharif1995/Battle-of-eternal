@@ -94,6 +94,8 @@ router.post('/', async (req, res) => {
             };
         });
 
+        console.log(updatingBuildings);
+
         res.status(200).json(combinedData);
     } catch (error) {
         console.error(error);
@@ -205,7 +207,7 @@ router.post('/ValidateBuildingUpgrade', async (req, res) => {
         if (!hasEnoughResources) {
             return res.status(400).json({ error: 'Not enough resources to upgrade the building' });
         }
-        StartBuildingUpgrade(playerToken,buildingID);
+        await StartBuildingUpgrade(playerToken,buildingID);
         // Send validation response with upgrade details
         return res.status(200).json({
             message: 'Validation successful',
