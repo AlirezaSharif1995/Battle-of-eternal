@@ -94,8 +94,6 @@ router.post('/', async (req, res) => {
             };
         });
 
-        console.log(updatingBuildings);
-
         res.status(200).json(combinedData);
     } catch (error) {
         console.error(error);
@@ -145,12 +143,127 @@ router.post('/updatePosition', async (req, res) => {
 });
 
 router.post('/RequestaddBuilding', async (req, res) => {
+    const connection = await pool.getConnection();
     try {
-        
+        const { playerToken, buildingID, position } = req.body;
+
+        // Validate input
+        if (!playerToken || !buildingID) {
+            return res.status(400).json({ error: 'Invalid input' });
+        }
+
+        // Fetch player data
+        const [playerData] = await connection.execute(
+            'SELECT buildings FROM playerbuildings WHERE playerToken = ?',
+            [playerToken]
+        );
+
+        if (playerData.length === 0) {
+            return res.status(404).json({ error: 'Player not found' });
+        }
+
+        // Parse buildings data
+        const buildings = playerData[0].buildings || '[]';
+        let buildingList;
+        try {
+            buildingList = (buildings);
+        } catch (parseError) {
+            console.error('Error parsing buildings:', parseError);
+            return res.status(500).json({ error: 'Error parsing player buildings' });
+        }
+
+        // Check if building already exists
+        const existingBuilding = buildingList.find(b => b.building_id === buildingID);
+        if (existingBuilding) {
+            return res.status(400).json({ error: 'Building already exists' });
+        }
+
+        // Fetch building cost and build time for level 1
+        const [buildingData] = await connection.execute(
+            'SELECT cost, build_time FROM buildinglevels WHERE building_id = ? AND level = 1',
+            [buildingID]
+        );
+
+        if (buildingData.length === 0) {
+            return res.status(404).json({ error: 'Building details not found' });
+        }
+
+        const upgradeCost = (buildingData[0].cost); // Assuming cost is stored as JSON
+        const buildTime = buildingData[0].build_time;
+
+        // Fetch player resources
+        const [userData] = await connection.execute(
+            'SELECT iron, wood, stone, wheat FROM users WHERE playerToken = ?',
+            [playerToken]
+        );
+
+        if (userData.length === 0) {
+            return res.status(404).json({ error: 'Player resources not found' });
+        }
+
+        const playerResources = userData[0];
+
+        // Check if player has enough resources
+        const hasEnoughResources = Object.keys(upgradeCost).every(resource => {
+            return playerResources[resource] >= upgradeCost[resource];
+        });
+
+        if (!hasEnoughResources) {
+            return res.status(400).json({ error: 'Not enough resources to construct the building' });
+        }
+
+        // Deduct resources
+        const updatedResources = Object.keys(upgradeCost).reduce((acc, resource) => {
+            acc[resource] = playerResources[resource] - upgradeCost[resource];
+            return acc;
+        }, {});
+
+        await connection.beginTransaction();
+
+        await connection.execute(
+            'UPDATE users SET iron = ?, wood = ?, stone = ?, wheat = ? WHERE playerToken = ?',
+            [
+                updatedResources.iron,
+                updatedResources.wood,
+                updatedResources.stone,
+                updatedResources.wheat,
+                playerToken
+            ]
+        );
+
+        // Save construction start and end times
+        const startTime = new Date();
+        const endTime = new Date(startTime.getTime() + buildTime * 1000); // Assuming buildTime is in seconds
+
+        await connection.execute(
+            'INSERT INTO buildingUpgrades (playerToken, buildingID, startTime, endTime) VALUES (?, ?, ?, ?)',
+            [playerToken, buildingID, startTime, endTime]
+        );
+
+        // Add building to the player's building list
+        buildingList.push({ building_id: buildingID, level: 0, position: position });
+
+        await connection.execute(
+            'UPDATE playerbuildings SET buildings = ? WHERE playerToken = ?',
+            [JSON.stringify(buildingList), playerToken]
+        );
+
+        await connection.commit();
+
+        return res.status(200).json({
+            message: 'Building construction started successfully',
+            buildingID,
+            endTime
+        });
     } catch (error) {
-        
+        console.error(error);
+        if (connection) await connection.rollback();
+        res.status(500).json({ error: 'Internal server error' });
+    } finally {
+        if (connection) connection.release();
     }
 });
+
 
 router.post('/ValidateBuildingUpgrade', async (req, res) => {
     try {
