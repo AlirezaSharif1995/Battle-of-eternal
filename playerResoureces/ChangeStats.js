@@ -124,5 +124,4 @@ async function updatePlayerStats(playerToken, updatedValues, beforeValues) {
     });
 }
 
-
 module.exports = { updatePlayerStats }
