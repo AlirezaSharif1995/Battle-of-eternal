@@ -1,4 +1,4 @@
-const mysql = require('mysql');
+const mysql = require('mysql2/promise');
 
 const pool = mysql.createPool({
     host: 'localhost',
@@ -10,8 +10,13 @@ const pool = mysql.createPool({
     queueLimit: 0
 });
 
-function updatePlayerStats(playerToken, updatedValues, beforeValues) {
+async function updatePlayerStats(playerToken, updatedValues, beforeValues) {
   
+    const [stats] = await pool.execute(
+        'SELECT * FROM playerstats WHERE playerToken = ?',
+        [playerToken]
+    );
+
     // Destructure the stats object from updatedValues
     const {
       civilization_points,
@@ -39,58 +44,58 @@ function updatePlayerStats(playerToken, updatedValues, beforeValues) {
 
     // Calculate differences and update fields
     if (defense_power !== undefined) {
-        updateFields.defense_power = (defense_power - (beforeValues.defense_power || 0));
+        updateFields.defense_power = (defense_power - (beforeValues.defense_power || 0))+ stats[0].defense_power;
     }
     if (civilization_points !== undefined) {
-        updateFields.civilization_points = (civilization_points - (beforeValues.civilization_points || 0));
+        updateFields.civilization_points = (civilization_points - (beforeValues.civilization_points || 0)) + stats[0].civilization_points;
     }
     if (population_consumers !== undefined) {
-        updateFields.population_consumers = (population_consumers - (beforeValues.population_consumers || 0));
+        updateFields.population_consumers = (population_consumers - (beforeValues.population_consumers || 0))+ stats[0].population_consumers;
     }
     if (training_time_reduction !== undefined) {
-        updateFields.training_time_reduction = (training_time_reduction - (beforeValues.training_time_reduction || 0));
+        updateFields.training_time_reduction = (training_time_reduction - (beforeValues.training_time_reduction || 0))+ stats[0].training_time_reduction;
     }
     if (ballon_destroy_point !== undefined) {
-        updateFields.ballon_destroy_point = (ballon_destroy_point - (beforeValues.ballon_destroy_point || 0));
+        updateFields.ballon_destroy_point = (ballon_destroy_point - (beforeValues.ballon_destroy_point || 0))+ stats[0].ballon_destroy_point;
     }
     if (member_limit !== undefined) {
-        updateFields.member_limit = (member_limit - (beforeValues.member_limit || 0));
+        updateFields.member_limit = (member_limit - (beforeValues.member_limit || 0))+ stats[0].member_limit;
     }
     if (attack_limit !== undefined) {
-        updateFields.attack_limit = (attack_limit - (beforeValues.attack_limit || 0));
+        updateFields.attack_limit = (attack_limit - (beforeValues.attack_limit || 0))+ stats[0].attack_limit;
     }
     if (defense_power_increase_percent !== undefined) {
-        updateFields.defense_power_increase_percent = (defense_power_increase_percent - (beforeValues.defense_power_increase_percent || 0));
+        updateFields.defense_power_increase_percent = (defense_power_increase_percent - (beforeValues.defense_power_increase_percent || 0))+ stats[0].defense_power_increase_percent;
     }
     if (troop_speed_boost !== undefined) {
-        updateFields.troop_speed_boost = (troop_speed_boost - (beforeValues.troop_speed_boost || 0));
+        updateFields.troop_speed_boost = (troop_speed_boost - (beforeValues.troop_speed_boost || 0))+ stats[0].troop_speed_boost;
     }
     if (updating_time_reduction !== undefined) {
-        updateFields.updating_time_reduction = (updating_time_reduction - (beforeValues.updating_time_reduction || 0));
+        updateFields.updating_time_reduction = (updating_time_reduction - (beforeValues.updating_time_reduction || 0))+ stats[0].updating_time_reduction;
     }
     if (elixir_production !== undefined) {
-        updateFields.elixir_production = (elixir_production - (beforeValues.elixir_production || 0));
+        updateFields.elixir_production = (elixir_production - (beforeValues.elixir_production || 0))+ stats[0].elixir_production;
     }
     if (iron_production !== undefined) {
-        updateFields.iron_production = (iron_production - (beforeValues.iron_production || 0));
+        updateFields.iron_production = (iron_production - (beforeValues.iron_production || 0))+ stats[0].iron_production;
     }
     if (wood_production !== undefined) {
-        updateFields.wood_production = (wood_production - (beforeValues.wood_production || 0));
+        updateFields.wood_production = (wood_production - (beforeValues.wood_production || 0))+ stats[0].wood_production;
     }
     if (stone_production !== undefined) {
-        updateFields.stone_production = (stone_production - (beforeValues.stone_production || 0));
+        updateFields.stone_production = (stone_production - (beforeValues.stone_production || 0))+ stats[0].stone_production;
     }
     if (storage_capacity !== undefined) {
-        updateFields.storage_capacity = (storage_capacity - (beforeValues.storage_capacity || 0));
+        updateFields.storage_capacity = (storage_capacity - (beforeValues.storage_capacity || 0))+ stats[0].storage_capacity;
     }
     if (build_time_reduction !== undefined) {
-        updateFields.build_time_reduction = (build_time_reduction - (beforeValues.build_time_reduction || 0));
+        updateFields.build_time_reduction = (build_time_reduction - (beforeValues.build_time_reduction || 0))+ stats[0].build_time_reduction;
     }
     if (training_time_reduction_percent !== undefined) {
-        updateFields.training_time_reduction_percent = (training_time_reduction_percent - (beforeValues.training_time_reduction_percent || 0));
+        updateFields.training_time_reduction_percent = (training_time_reduction_percent - (beforeValues.training_time_reduction_percent || 0))+ stats[0].training_time_reduction_percent;
     }
     if (wheat_production !== undefined) {
-        updateFields.wheat_production = (wheat_production - (beforeValues.wheat_production || 0));
+        updateFields.wheat_production = (wheat_production - (beforeValues.wheat_production || 0))+ stats[0].wheat_production;
     }
     
     let updateQuery = 'UPDATE playerstats SET ';

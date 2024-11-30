@@ -56,7 +56,7 @@ router.post('/', async (req, res) => {
         // Insert new user into the database
         await pool.query('INSERT INTO users (playerToken, email, password_hash, username) VALUES (?, ?, ?, ?)', [token, email, hashedPassword, username]);
         await pool.query('INSERT INTO playerbuildings (playerToken, buildings) VALUES (?, ?)', [token, JSON.stringify(defaultBuildings)]);
-        await pool.query('INSERT INTO playerstats (playerToken) VALUES (?, ?)', [token]);
+        await pool.query('INSERT INTO playerstats (playerToken) VALUES (?)', [token]);
 
         res.status(201).json({ message: 'User registered successfully', playerToken: token });
     } catch (error) {
