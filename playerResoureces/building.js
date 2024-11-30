@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const mysql = require('mysql2/promise');
 const cron = require('node-cron');
-
+const statUpdate = require('./ChangeStats');
 
 const pool = mysql.createPool({
     host: 'localhost',
@@ -145,7 +145,7 @@ router.post('/updatePosition', async (req, res) => {
 router.post('/RequestaddBuilding', async (req, res) => {
     const connection = await pool.getConnection();
     try {
-        const { playerToken, buildingID, position } = req.body;
+        const { playerToken, buildingID, newPosition } = req.body;
 
         // Validate input
         if (!playerToken || !buildingID) {
@@ -241,7 +241,7 @@ router.post('/RequestaddBuilding', async (req, res) => {
         );
 
         // Add building to the player's building list
-        buildingList.push({ building_id: buildingID, level: 0, position: position });
+        buildingList.push({ building_id: buildingID, level: 0, position: newPosition });
 
         await connection.execute(
             'UPDATE playerbuildings SET buildings = ? WHERE playerToken = ?',
@@ -496,6 +496,17 @@ cron.schedule('*/10 * * * * *', async () => {
                 );
             }
 
+            const [stats] = await pool.execute(
+                'SELECT stats FROM buildinglevels WHERE building_id = ? AND level = ?',
+                [buildingID,buildingToUpdate.level + 1]
+            );
+
+            const [statsBefore] = await pool.execute(
+                'SELECT stats FROM buildinglevels WHERE building_id = ? AND level = ?',
+                [buildingID,buildingToUpdate.level]
+            );
+
+            statUpdate.updatePlayerStats(playerToken,stats[0],statsBefore[0]);
             // Mark upgrade as completed
             await pool.execute(
                 'UPDATE buildingUpgrades SET completed = 1 WHERE playerToken = ? AND buildingID = ?',

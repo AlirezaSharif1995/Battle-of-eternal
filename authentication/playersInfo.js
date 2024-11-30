@@ -17,6 +17,7 @@ router.post('/getPlayerInfo', async (req, res) => {
 
     try {
         const [existingUser] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [playerToken]);
+        const [existingUser2] = await pool.query('SELECT * FROM playerstats WHERE playerToken = ?', [playerToken]);
 
         if (existingUser.length === 0) {
             return res.status(404).json({ error: 'User not found' });
@@ -32,8 +33,8 @@ router.post('/getPlayerInfo', async (req, res) => {
             iron: existingUser[0].iron,
             elixir: existingUser[0].elixir,
             avatarCode: existingUser[0].avatarCode,
-            civilization: existingUser[0].civilization,
-            population: existingUser[0].population
+            civilization: existingUser2[0].civilization_points,
+            population: existingUser2[0].population_consumers
         };
 
         res.status(200).json(user);

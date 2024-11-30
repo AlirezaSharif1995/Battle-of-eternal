@@ -10,32 +10,55 @@ const pool = mysql.createPool({
   queueLimit: 0
 });
 
-
 function updatePlayerResources() {
-  const query = 'SELECT playerToken, username, wood, stone, wheat, iron, elixir, woodrate, stonerate, ironrate, wheatrate, elixirrate, capacity FROM users';
+  const query = `
+    SELECT 
+      users.playerToken, 
+      users.username, 
+      users.wood, 
+      users.stone, 
+      users.wheat, 
+      users.iron, 
+      users.elixir, 
+      playerStats.wood_production, 
+      playerStats.stone_production, 
+      playerStats.iron_production, 
+      playerStats.wheat_production, 
+      playerStats.elixir_production, 
+      playerStats.storage_capacity
+    FROM users
+    JOIN playerStats ON users.playerToken = playerStats.playerToken
+  `;
 
   pool.query(query, (error, results) => {
     if (error) {
-      console.error('Error fetching players:', error);
+      console.error('Error fetching players and stats:', error);
       return;
     }
 
     results.forEach(player => {
-      let updatedWood = player.wood + player.woodrate;
-      let updatedStone = player.stone + player.stonerate;
-      let updatedWheat = player.wheat + player.wheatrate;
-      let updatedIron = player.iron + player.ironrate;
-      let updatedElixir = player.elixir + player.elixirrate;
+      // Calculate updated resources
+      let updatedWood = player.wood + player.wood_production;
+      let updatedStone = player.stone + player.stone_production;
+      let updatedWheat = player.wheat + player.wheat_production;
+      let updatedIron = player.iron + player.iron_production;
+      let updatedElixir = player.elixir + player.elixir_production;
 
-      const maxCapacity = player.capacity;
-
+      // Apply capacity limits
+      const maxCapacity = player.storage_capacity;
       updatedWood = Math.min(updatedWood, maxCapacity);
       updatedStone = Math.min(updatedStone, maxCapacity);
       updatedWheat = Math.min(updatedWheat, maxCapacity);
       updatedIron = Math.min(updatedIron, maxCapacity);
       updatedElixir = Math.min(updatedElixir, maxCapacity);
 
-      const updateQuery = 'UPDATE users SET wood = ?, stone = ?, wheat = ?, iron = ?, elixir = ? WHERE playerToken = ?';
+
+      // Update resources in the database
+      const updateQuery = `
+        UPDATE users 
+        SET wood = ?, stone = ?, wheat = ?, iron = ?, elixir = ? 
+        WHERE playerToken = ?
+      `;
 
       pool.query(updateQuery, [updatedWood, updatedStone, updatedWheat, updatedIron, updatedElixir, player.playerToken], updateError => {
         if (updateError) {
@@ -45,5 +68,6 @@ function updatePlayerResources() {
     });
   });
 }
+
 
 module.exports = updatePlayerResources;
