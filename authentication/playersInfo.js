@@ -13,36 +13,6 @@ const pool = mysql.createPool({
     queueLimit: 0
 });
 
-// Helper: Deduct Resources
-async function deductResources(userId, levelUpData) {
-    const [userData] = await pool.query('SELECT iron, wood, stone, wheat FROM users WHERE user_id = ?', [userId]);
-
-    if (
-        userData[0].wood < levelUpData.wood ||
-        userData[0].iron < levelUpData.iron ||
-        userData[0].wheat < levelUpData.wheat ||
-        userData[0].stone < levelUpData.stone
-    ) {
-        throw new Error('Insufficient resources');
-    }
-
-    await pool.query(
-        'UPDATE users SET wood = wood - ?, iron = iron - ?, wheat = wheat - ?, stone = stone - ? WHERE user_id = ?',
-        [levelUpData.wood, levelUpData.iron, levelUpData.wheat, levelUpData.stone, userId]
-    );
-}
-
-// Helper: Start Upgrade
-async function startUpgrade(userId, forceName, currentLevel, nextLevel, durationInHours) {
-    const [rows] = await pool.query(
-        `INSERT INTO upgrade_queue (user_id, force_name, current_level, next_level, start_time, end_time)
-         VALUES (?, ?, ?, ?, NOW(), DATE_ADD(NOW(), INTERVAL ? HOUR))`,
-        [userId, forceName, currentLevel, nextLevel, durationInHours]
-    );
-    return rows.insertId;
-}
-
-
 router.post('/getPlayerInfo', async (req, res) => {
     const { playerToken } = req.body;
 
@@ -96,12 +66,12 @@ router.post('/levelupForces', async (req, res) => {
         }
 
         // Safely parse forces and upgrading_forces
-        const forces = typeof rows[0].forces === 'string' 
-            ? JSON.parse(rows[0].forces || '{}') 
+        const forces = typeof rows[0].forces === 'string'
+            ? JSON.parse(rows[0].forces || '{}')
             : rows[0].forces || {};
 
-        const upgradingForces = typeof rows[0].upgrading_forces === 'string' 
-            ? JSON.parse(rows[0].upgrading_forces || '{}') 
+        const upgradingForces = typeof rows[0].upgrading_forces === 'string'
+            ? JSON.parse(rows[0].upgrading_forces || '{}')
             : rows[0].upgrading_forces || {};
 
         // Check if the force exists
@@ -168,18 +138,19 @@ router.post('/levelupForces', async (req, res) => {
 router.post('/addForce', async (req, res) => {
     const { playerToken, forceName } = req.body;
 
+    // Validate input
     if (!playerToken || !forceName) {
-        return res.status(400).json({ message: 'Invalid request data' });
+        return res.status(400).json({ message: 'Player token and force name are required' });
     }
 
     try {
-        // Fetch current forces
+        // Fetch current forces from the database
         const [rows] = await pool.query('SELECT forces FROM user_forces_json WHERE user_id = ?', [playerToken]);
         if (rows.length === 0) {
             return res.status(404).json({ message: 'User not found' });
         }
 
-        // Safely parse forces JSON
+        // Parse the forces JSON safely
         let forces;
         try {
             forces = (rows[0].forces || '{}');
@@ -187,23 +158,24 @@ router.post('/addForce', async (req, res) => {
             return res.status(500).json({ message: 'Failed to parse forces data' });
         }
 
-        // Check if the force already exists
+        // Add or update the specified force
         if (forces[forceName]) {
-            return res.status(400).json({ message: 'Force already exists' });
+            forces[forceName].quantity += 20; // Increment the quantity
+        } else {
+            forces[forceName] = {
+                level: 1, // Default level
+                quantity: 20
+            };
         }
-
-        // Add new force with default level or properties
-        forces[forceName] = {
-            level: 1, // Default level
-            quantity: 20
-        };
 
         console.log("Updated Forces:", forces);
 
         // Update the forces JSON in the database
         await pool.query('UPDATE user_forces_json SET forces = ? WHERE user_id = ?', [JSON.stringify(forces), playerToken]);
 
-        res.json({ message: 'Force added successfully', forces });
+        // Send only the updated force in the response
+        const updatedForce = forces[forceName];
+        res.json({ message: 'Force updated successfully', forceName, updatedForce });
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: 'Internal server error' });
@@ -211,15 +183,15 @@ router.post('/addForce', async (req, res) => {
 });
 
 router.post('/getPlayerForces', async (req, res) => {
-    const { userId } = req.body;
+    const { playerToken } = req.body;
 
-    if (!userId) {
+    if (!playerToken) {
         return res.status(400).json({ message: 'Invalid request data' });
     }
 
     try {
         // Fetch the player's forces from the `user_forces_json` table
-        const [rows] = await pool.query('SELECT forces FROM user_forces_json WHERE user_id = ?', [userId]);
+        const [rows] = await pool.query('SELECT forces FROM user_forces_json WHERE user_id = ?', [playerToken]);
         if (rows.length === 0) {
             return res.status(404).json({ message: 'User not found' });
         }
@@ -239,6 +211,7 @@ router.post('/getPlayerForces', async (req, res) => {
         const detailedForces = await Promise.all(
             forceNames.map(async (forceName) => {
                 const level = userForces[forceName]?.level; // Get the player's level for this force
+                const count = userForces[forceName]?.quantity; // Get the player's level for this force
                 if (!level) {
                     return null; // Skip if no level is found for the force
                 }
@@ -257,16 +230,27 @@ router.post('/getPlayerForces', async (req, res) => {
 
                 // Fetch next level details from the `forces` table
                 const [nextLevelDetails] = await pool.query(
-                    `SELECT wheat_cost, wood_cost, iron_cost, elixir_cost, upgrade_time
+                    `SELECT attack_power, defense_power, raid_capacity, speed, wheat_cost, wood_cost, iron_cost, elixir_cost, upgrade_time
                      FROM forces
                      WHERE name = ? AND level = ?`,
                     [forceName, level + 1]
                 );
 
+                // Fetch next level details from the `forces` table
+                const [maxLevelDetails] = await pool.query(
+                    `SELECT attack_power, defense_power, raid_capacity, speed, wheat_cost, wood_cost, iron_cost, elixir_cost, upgrade_time
+                     FROM forces
+                     WHERE name = ? AND level = 20`,
+                    [forceName]
+                );
+
+                const [createInfo] = await pool.query('SELECT * FROM updateforces WHERE name = ?', [forceName]);
+
+
                 // Build the response object for this force
                 return {
                     ...currentLevelDetails[0], // Current level details
-                    playerLevel: level, // Add the player's level for this force
+                    count,
                     createdAt: userForces[forceName]?.createdAt, // Add the creation date from player data
                     nextLevelCost: nextLevelDetails.length > 0
                         ? {
@@ -274,9 +258,22 @@ router.post('/getPlayerForces', async (req, res) => {
                             wood: nextLevelDetails[0].wood_cost,
                             iron: nextLevelDetails[0].iron_cost,
                             elixir: nextLevelDetails[0].elixir_cost,
+                            attack_power: nextLevelDetails[0].attack_power,
+                            raid_capacity: nextLevelDetails[0].raid_capacity,
+                            speed: nextLevelDetails[0].speed,
+                            defense_power: nextLevelDetails[0].defense_power,
                             upgradeTime: nextLevelDetails[0].upgrade_time,
                         }
                         : null, // If no next level exists, set to null
+                    maxLevelDetails:
+                    {
+                        attack_power: maxLevelDetails[0].attack_power,
+                        raid_capacity: maxLevelDetails[0].raid_capacity,
+                        speed: maxLevelDetails[0].speed,
+                        defense_power: maxLevelDetails[0].defense_power,
+                    },
+                    createInfo: createInfo[0]
+
                 };
             })
         );
@@ -294,7 +291,188 @@ router.post('/getPlayerForces', async (req, res) => {
     }
 });
 
-cron.schedule('*/10 * * * * *', async () => {
+router.post('/createForces', async (req, res) => {
+    const { playerToken, forceName, forceCount } = req.body;
+
+    console.log(forceName)
+    if (!playerToken || !forceName || !forceCount || isNaN(forceCount) || forceCount <= 0) {
+        return res.status(400).json({ message: 'Invalid request data' });
+    }
+
+    try {
+        // Fetch player's forces and resources
+        const [playerRows] = await pool.query(
+            `SELECT forces FROM user_forces_json WHERE user_id = ?`,
+            [playerToken]
+        );
+
+        const [playerResource] = await pool.query(
+            `SELECT wheat, stone, wood, iron FROM users WHERE playerToken = ?`,
+            [playerToken]
+        );
+
+        if (playerRows.length === 0) {
+            return res.status(404).json({ message: 'Player not found' });
+        }
+
+        // Parse player data
+        const playerForces = (playerRows[0].forces || '{}');
+        const playerResources = (playerResource[0] || '{}');
+
+        // Fetch force details for level 1
+        const [forceDetails] = await pool.query(
+            `SELECT stone, wood, iron, wheat, production_time
+             FROM updateforces 
+             WHERE name = ?`,
+            [forceName]
+        );
+
+        if (forceDetails.length === 0) {
+            return res.status(404).json({ message: 'Force not found in database' });
+        }
+
+        const newForceDetails = forceDetails[0];
+
+        const totalWheatCost = newForceDetails.wheat * forceCount;
+        const totalWoodCost = newForceDetails.wood * forceCount;
+        const totalIronCost = newForceDetails.iron * forceCount;
+        const totalStoneCost = newForceDetails.stone * forceCount;
+
+        // Convert production time (hh:mm:ss) to seconds
+        const [hours, minutes, seconds] = newForceDetails.production_time.split(':').map(Number);
+        const productionTimeInSeconds = hours * 3600 + minutes * 60 + seconds;
+
+        const totalProductionTimeInSeconds = productionTimeInSeconds * forceCount;
+
+        const currentTime = new Date();
+        const totalProductionTime = new Date(currentTime.getTime() + totalProductionTimeInSeconds * 1000)
+            .toISOString()
+            .slice(0, 19)
+            .replace('T', ' ');
+
+        // Check if player has enough resources
+        if (
+            playerResources.wheat < totalWheatCost ||
+            playerResources.wood < totalWoodCost ||
+            playerResources.iron < totalIronCost ||
+            playerResources.stone < totalStoneCost
+        ) {
+            return res.status(400).json({
+                message: 'Not enough resources to create forces',
+                required: {
+                    wheat: totalWheatCost,
+                    wood: totalWoodCost,
+                    iron: totalIronCost,
+                    stone: totalStoneCost,
+                },
+                available: playerResources,
+            });
+        }
+
+        // Add force creation request to the `force_creation` table
+        await pool.query(
+            `INSERT INTO forcecreation (player_id, force_type, amount, required_wheat, required_wood, required_iron, required_stone, creation_start_time, creation_end_time, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?)`,
+            [
+                playerToken,
+                forceName,
+                forceCount,
+                totalWheatCost,
+                totalWoodCost,
+                totalIronCost,
+                totalStoneCost,
+                totalProductionTime,
+                'in_progress'
+            ]
+        );
+
+        // Deduct the required resources from the user's account
+        await pool.query(
+            `UPDATE users SET wheat = wheat - ?, wood = wood - ?, iron = iron - ?, stone = stone - ? WHERE playerToken = ?`,
+            [totalWheatCost, totalWoodCost, totalIronCost, totalStoneCost, playerToken]
+        );
+
+        return res.status(200).json({
+            message: 'Force creation request submitted successfully',
+            forceCreation: {
+                playerToken,
+                forceName,
+                forceCount,
+                totalCosts: {
+                    wheat: totalWheatCost,
+                    wood: totalWoodCost,
+                    iron: totalIronCost,
+                    stone: totalStoneCost,
+                },
+                productionEndTime: totalProductionTime,
+            },
+        });
+    } catch (error) {
+        console.error('Error processing force creation:', error.message, error);
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+const checkForceCreationCompletion = async () => {
+    try {
+        // Fetch all force creation requests where the end time has passed
+        const [forceCreationRequests] = await pool.query(
+            `SELECT * FROM forcecreation WHERE creation_end_time <= NOW() AND status = 'in_progress' `
+        );
+
+        if (forceCreationRequests.length === 0) {
+            console.log('No force creation requests to process.');
+            return;
+        }
+
+        // Process each completed force creation request
+        for (let request of forceCreationRequests) {
+            const { player_id, force_type, amount } = request;
+
+            try {
+                // Fetch the current forces of the player
+                const [userForcesRows] = await pool.query(
+                    `SELECT forces FROM user_forces_json WHERE user_id = ?`,
+                    [player_id]
+                );
+
+                let userForces = (userForcesRows[0]?.forces && (userForcesRows[0]?.forces)) || {};
+
+                // Add the newly created forces to the user's forces
+                if (userForces[force_type]) {
+                    // If force type exists, add to quantity (ensure 'quantity' field exists)
+                    userForces[force_type].quantity = (userForces[force_type].quantity || 0) + amount;
+                } else {
+                    // If force type does not exist, initialize with quantity and level
+                    userForces[force_type] = { quantity: amount, level: 1 }; // Assuming level 1 for new forces
+                }
+
+                // Update the user's forces in the database
+                await pool.query(
+                    `UPDATE user_forces_json SET forces = ? WHERE user_id = ?`,
+                    [JSON.stringify(userForces), player_id]
+                );
+
+                await pool.query(
+                    `DELETE FROM forcecreation WHERE id = ?`,
+                    [request.id]
+                );
+                
+
+                console.log(`Force creation completed for player ${player_id}: ${amount} ${force_type} forces added.`);
+            } catch (error) {
+                console.error('Error updating forces:', error.message);
+            }
+
+        }
+    } catch (error) {
+        console.error('Error processing force creation completion:', error.message, error);
+    }
+};
+
+cron.schedule('*/10 * * * * *', checkForceCreationCompletion);
+
+cron.schedule('* * * * *', async () => {
     try {
         // Fetch all users with active upgrading forces
         const [userRows] = await pool.query(
@@ -314,8 +492,8 @@ cron.schedule('*/10 * * * * *', async () => {
                 const forces = (forcesJSON || '{}');
 
                 // Check if upgrading_forces is already an object, avoid parsing if it is
-                const upgradingForces = typeof upgradingForcesJSON === 'object' 
-                    ? upgradingForcesJSON 
+                const upgradingForces = typeof upgradingForcesJSON === 'object'
+                    ? upgradingForcesJSON
                     : JSON.parse(upgradingForcesJSON || '{}');
 
                 let upgradesCompleted = false;
@@ -359,10 +537,6 @@ cron.schedule('*/10 * * * * *', async () => {
         console.error('Error in scheduled task:', error);
     }
 });
-
-
-
-
 
 async function deductResources(userId, costs) {
     const { wood_cost, iron_cost, elixir_cost, wheat_cost } = costs;

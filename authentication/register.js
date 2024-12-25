@@ -53,10 +53,13 @@ router.post('/', async (req, res) => {
             { building_id: 5, level: 1, position: { x: 4, y: 0 } }
         ];
         
+        const forces = "{\"Spy\": {\"level\": 1,\"quantity\": 0},\"Archer\": {\"level\": 1,\"quantity\": 0},\"Balloon\": {\"level\": 1,\"quantity\": 0},\"Infantry\": {\"level\": 1,\"quantity\": 0},\"Maceman\": {\"level\": 1,\"quantity\": 0},\"Swordsman\": {\"level\": 1,\"quantity\": 0},\"Horseman\": {\"level\": 1,\"quantity\": 0},\"Knights\": {\"level\": 1,\"quantity\": 0},\"Battering ram\": {\"level\": 1,\"quantity\": 0},\"Heavy Catapult\": {\"level\": 1,\"quantity\": 0}}";
+
         // Insert new user into the database
         await pool.query('INSERT INTO users (playerToken, email, password_hash, username) VALUES (?, ?, ?, ?)', [token, email, hashedPassword, username]);
         await pool.query('INSERT INTO playerbuildings (playerToken, buildings) VALUES (?, ?)', [token, JSON.stringify(defaultBuildings)]);
         await pool.query('INSERT INTO playerstats (playerToken) VALUES (?)', [token]);
+        await pool.query('INSERT INTO user_forces_json (user_id, forces) VALUES (?, ?)', [token, forces]);
 
         res.status(201).json({ message: 'User registered successfully', playerToken: token });
     } catch (error) {
