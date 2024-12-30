@@ -294,7 +294,6 @@ router.post('/getPlayerForces', async (req, res) => {
 router.post('/createForces', async (req, res) => {
     const { playerToken, forceName, forceCount } = req.body;
 
-    console.log(forceName)
     if (!playerToken || !forceName || !forceCount || isNaN(forceCount) || forceCount <= 0) {
         return res.status(400).json({ message: 'Invalid request data' });
     }
@@ -344,11 +343,8 @@ router.post('/createForces', async (req, res) => {
 
         const totalProductionTimeInSeconds = productionTimeInSeconds * forceCount;
 
-        const currentTime = new Date();
-        const totalProductionTime = new Date(currentTime.getTime() + totalProductionTimeInSeconds * 1000)
-            .toISOString()
-            .slice(0, 19)
-            .replace('T', ' ');
+        const totalProductionTime = new Date(Date.now() + totalProductionTimeInSeconds * 1000);
+        const formattedEndTime = toLocalMySQLDatetime(totalProductionTime);
 
         // Check if player has enough resources
         if (
@@ -372,7 +368,7 @@ router.post('/createForces', async (req, res) => {
         // Add force creation request to the `force_creation` table
         await pool.query(
             `INSERT INTO forcecreation (player_id, force_type, amount, required_wheat, required_wood, required_iron, required_stone, creation_start_time, creation_end_time, status)
-             VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?)`,
+             VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)`,
             [
                 playerToken,
                 forceName,
@@ -381,7 +377,7 @@ router.post('/createForces', async (req, res) => {
                 totalWoodCost,
                 totalIronCost,
                 totalStoneCost,
-                totalProductionTime,
+                formattedEndTime,
                 'in_progress'
             ]
         );
@@ -409,6 +405,131 @@ router.post('/createForces', async (req, res) => {
         });
     } catch (error) {
         console.error('Error processing force creation:', error.message, error);
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+router.post('/getUpdatingForces', async (req, res) => {
+
+    try {
+        const { playerToken } = req.body;
+
+        const [playerRows] = await pool.query(
+            `SELECT upgrading_forces FROM user_forces_json WHERE user_id = ?`,
+            [playerToken]
+        );
+
+        return res.status(200).json({
+            message: 'updating force get successfully',
+            forces: playerRows[0]
+        });
+
+
+    } catch (error) {
+        console.error('Error get updating force:', error.message, error);
+        return res.status(500).json({ message: 'get updating force' });
+    }
+
+});
+
+router.post('/getCreatingForces', async (req, res) => {
+    try {
+        const { playerToken } = req.body;
+
+        // Query to get forces for the player
+        const [playerRows] = await pool.query(
+            `SELECT * FROM forcecreation WHERE player_id = ?`,
+            [playerToken]
+        );
+
+        if (playerRows.length === 0) {
+            return res.status(200).json({ message: 'No forces found for the player' });
+        }
+
+        // Map forces with remaining time calculation
+        const forcesWithEndTimeInSeconds = playerRows.map(force => {
+            const creationEndTime = new Date(force.creation_end_time);
+            const currentTime = Date.now();
+
+            if (isNaN(creationEndTime.getTime())) {
+                throw new Error(`Invalid creation_end_time format for force: ${force.force_type}`);
+            }
+
+            // Calculate remaining time in seconds
+            const creationEndTimeSeconds = Math.max(0, Math.floor((creationEndTime - currentTime) / 1000));
+
+            return {
+                createID: force.id,
+                name: force.force_type,
+                count: force.amount,
+                creation_end_time_seconds: creationEndTimeSeconds,
+            };
+        });
+
+        return res.status(200).json({
+            message: 'Creating forces retrieved successfully',
+            forces: forcesWithEndTimeInSeconds,
+        });
+    } catch (error) {
+        console.error('Error retrieving creating forces:', error.message, error);
+        return res.status(500).json({ message: 'Failed to retrieve creating forces' });
+    }
+});
+
+router.post('/cancelForceCreation', async (req, res) => {
+    const { playerToken, createID } = req.body;
+console.log(req.body)
+    if (!playerToken || !createID) {
+        return res.status(400).json({ message: 'Invalid request data' });
+    }
+
+    try {
+        // Fetch the force creation entry
+        const [forceEntryRows] = await pool.query(
+            `SELECT * FROM forcecreation WHERE player_id = ? AND id = ?`,
+            [playerToken, createID]
+        );
+
+        if (forceEntryRows.length === 0) {
+            return res.status(404).json({ message: 'No active force creation found for this player and force type' });
+        }
+
+        const forceEntry = forceEntryRows[0];
+
+        // Calculate 50% refund for each resource
+        const refundWheat = Math.floor(forceEntry.required_wheat * 0.5);
+        const refundWood = Math.floor(forceEntry.required_wood * 0.5);
+        const refundIron = Math.floor(forceEntry.required_iron * 0.5);
+        const refundStone = Math.floor(forceEntry.required_stone * 0.5);
+
+        // Refund resources to the player
+        await pool.query(
+            `UPDATE users SET 
+                wheat = wheat + ?, 
+                wood = wood + ?, 
+                iron = iron + ?, 
+                stone = stone + ? 
+             WHERE playerToken = ?`,
+            [refundWheat, refundWood, refundIron, refundStone, playerToken]
+        );
+
+        // Delete the force creation entry
+        await pool.query(
+            `DELETE FROM forcecreation WHERE id = ?`,
+            [forceEntry.id]
+        );
+
+        return res.status(200).json({
+            message: 'Force creation canceled successfully',
+            refundedResources: {
+                wheat: refundWheat,
+                wood: refundWood,
+                iron: refundIron,
+                stone: refundStone,
+            },
+        });
+    } catch (error) {
+        console.error('Error canceling force creation:', error.message, error);
         return res.status(500).json({ message: 'Internal server error' });
     }
 });
@@ -457,7 +578,7 @@ const checkForceCreationCompletion = async () => {
                     `DELETE FROM forcecreation WHERE id = ?`,
                     [request.id]
                 );
-                
+
 
                 console.log(`Force creation completed for player ${player_id}: ${amount} ${force_type} forces added.`);
             } catch (error) {
@@ -574,6 +695,17 @@ function parseUpgradeDuration(duration) {
     let minutes = minutesMatch ? parseInt(minutesMatch[1]) : 0;
 
     return (hours * 3600) + (minutes * 60); // returns total duration in seconds
+}
+
+function toLocalMySQLDatetime(date) {
+    const pad = (n) => (n < 10 ? '0' + n : n); // Helper to pad single digits
+    const year = date.getFullYear();
+    const month = pad(date.getMonth() + 1); // Months are 0-indexed
+    const day = pad(date.getDate());
+    const hours = pad(date.getHours());
+    const minutes = pad(date.getMinutes());
+    const seconds = pad(date.getSeconds());
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 
 
