@@ -47,16 +47,17 @@ router.post('/', async (req, res) => {
         const token = generateRandomToken();
         const defaultBuildings = [
             { building_id: 1, level: 1, position: { x: -303, y: 83 } },
-            { building_id: 2, level: 1, position: { x: -280, y: -147 } }, 
-            { building_id: 3, level: 1, position: { x: 213, y: -195 } }, 
-            { building_id: 4, level: 1, position: { x: 134, y: 115 } }, 
+            { building_id: 2, level: 1, position: { x: -280, y: -147 } },
+            { building_id: 3, level: 1, position: { x: 213, y: -195 } },
+            { building_id: 4, level: 1, position: { x: 134, y: 115 } },
             { building_id: 5, level: 1, position: { x: 4, y: 0 } }
         ];
-        
+
         const forces = "{\"Spy\": {\"level\": 1,\"quantity\": 0},\"Archer\": {\"level\": 1,\"quantity\": 0},\"Balloon\": {\"level\": 1,\"quantity\": 0},\"Infantry\": {\"level\": 1,\"quantity\": 0},\"Maceman\": {\"level\": 1,\"quantity\": 0},\"Swordsman\": {\"level\": 1,\"quantity\": 0},\"Horseman\": {\"level\": 1,\"quantity\": 0},\"Knights\": {\"level\": 1,\"quantity\": 0},\"Battering ram\": {\"level\": 1,\"quantity\": 0},\"Heavy Catapult\": {\"level\": 1,\"quantity\": 0}}";
+        const cityPosition = (await generateRandomPosition(pool));
 
         // Insert new user into the database
-        await pool.query('INSERT INTO users (playerToken, email, password_hash, username) VALUES (?, ?, ?, ?)', [token, email, hashedPassword, username]);
+        await pool.query('INSERT INTO users (playerToken, email, password_hash, username, cityPositionX, cityPositionY) VALUES (?, ?, ?, ?, ?, ?)', [token, email, hashedPassword, username, cityPosition.x, cityPosition.y]);
         await pool.query('INSERT INTO playerbuildings (playerToken, buildings) VALUES (?, ?)', [token, JSON.stringify(defaultBuildings)]);
         await pool.query('INSERT INTO playerstats (playerToken) VALUES (?)', [token]);
         await pool.query('INSERT INTO user_forces_json (user_id, forces) VALUES (?, ?)', [token, forces]);
@@ -68,25 +69,33 @@ router.post('/', async (req, res) => {
     }
 });
 
-// HERE
-
 router.post('/addCity', async (req, res) => {
-    const { playerEmail, cityName, cityPositionX, cityPositionY } = req.body;
+    const { playerToken, cityName } = req.body;
 
     try {
-        const [existingUser] = await pool.query('SELECT * FROM users WHERE email = ? ORDER BY cities DESC', [playerEmail]);
-
-        const cityCount = existingUser[0].cities + 1;
+        const [existingUser] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [playerToken]);
 
         const hashedPassword = existingUser[0].password_hash;
         const email = existingUser[0].email;
         const username = existingUser[0].username;
-        const now = new Date();
+        constavatarCode = existingUser[0].avatarCode;
 
         const token = generateRandomToken();
+        const cityPosition = (await generateRandomPosition(pool));
+        const defaultBuildings = [
+            { building_id: 1, level: 1, position: { x: -303, y: 83 } },
+            { building_id: 2, level: 1, position: { x: -280, y: -147 } },
+            { building_id: 3, level: 1, position: { x: 213, y: -195 } },
+            { building_id: 4, level: 1, position: { x: 134, y: 115 } },
+            { building_id: 5, level: 1, position: { x: 4, y: 0 } }
+        ];
+        const forces = "{\"Spy\": {\"level\": 1,\"quantity\": 0},\"Archer\": {\"level\": 1,\"quantity\": 0},\"Balloon\": {\"level\": 1,\"quantity\": 0},\"Infantry\": {\"level\": 1,\"quantity\": 0},\"Maceman\": {\"level\": 1,\"quantity\": 0},\"Swordsman\": {\"level\": 1,\"quantity\": 0},\"Horseman\": {\"level\": 1,\"quantity\": 0},\"Knights\": {\"level\": 1,\"quantity\": 0},\"Battering ram\": {\"level\": 1,\"quantity\": 0},\"Heavy Catapult\": {\"level\": 1,\"quantity\": 0}}";
+
         // Insert new user into the database
-        await pool.query('INSERT INTO users (playerToken, email, password_hash, username, cities, cityName, cityPositionX, cityPositionY, lastUpdated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [token, email, hashedPassword, username, cityCount, cityName, cityPositionX, cityPositionY, now]);
-        await pool.query('INSERT INTO userbuildings (playerToken) VALUES (?)', [token]);
+        await pool.query('INSERT INTO users (playerToken, email, password_hash, username, cityPositionX, cityPositionY, cityName) VALUES (?, ?, ?, ?, ?, ?, ?)', [token, email, hashedPassword, username, cityPosition.x, cityPosition.y, cityName]);
+        await pool.query('INSERT INTO playerbuildings (playerToken, buildings) VALUES (?, ?)', [token, JSON.stringify(defaultBuildings)]);
+        await pool.query('INSERT INTO playerstats (playerToken) VALUES (?)', [token]);
+        await pool.query('INSERT INTO user_forces_json (user_id, forces) VALUES (?, ?)', [token, forces]);
 
         res.status(201).json({ message: 'City registered successfully', playerToken: token });
 
@@ -99,20 +108,20 @@ router.post('/addCity', async (req, res) => {
 });
 
 router.post('/getCities', async (req, res) => {
-    const { email } = req.body;
+    const { playerToken } = req.body;
 
     try {
-        const [users] = await pool.query('SELECT * FROM users WHERE email = ? ORDER BY cities ASC', [email]);
+        const [player] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [playerToken]);
+        const [users] = await pool.query('SELECT * FROM users WHERE email = ?', [player[0].email]);
 
         const validUsers = [];
 
         for (const user of users) {
             validUsers.push({
                 playerToken: user.playerToken,
-                cities: user.cities,
                 cityName: user.cityName,
-                citypositionX: user.citypositionX,
-                cityPositionY: user.cityPositionY,
+                citypositionY: user.citypositionY,
+                citypositionX: user.citypositionX
             });
         }
 
@@ -126,6 +135,23 @@ router.post('/getCities', async (req, res) => {
 
 
 });
+
+router.post('/getAllCities', async (req, res) => {
+
+    try {
+
+        const [cities] = await pool.query('SELECT citypositionY, citypositionX, cityName, playerToken FROM users');
+        res.status(201).json({ message: 'cities list', cities });
+
+    } catch (error) {
+        console.error('Error get city:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+
+});
+
+
+// HERE
 
 router.post('/checkRegister', async (req, res) => {
     const { email, username } = req.body;
@@ -181,7 +207,6 @@ async function generateRandomPosition(pool) {
         const randomIndex = Math.floor(Math.random() * range); // Random index
         return start + randomIndex * step; // Convert index to coordinate
     };
-
     while (true) {
         const x = getRandomCoordinate();
         const y = getRandomCoordinate();
@@ -190,6 +215,8 @@ async function generateRandomPosition(pool) {
             'SELECT * FROM users WHERE citypositionX = ? AND citypositionY = ?',
             [x, y]
         );
+        console.log("here")
+
         const [existingUser2] = await pool.query(
             'SELECT * FROM prize WHERE citypositionX = ? AND citypositionY = ?',
             [x, y]

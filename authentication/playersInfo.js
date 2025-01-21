@@ -35,7 +35,8 @@ router.post('/getPlayerInfo', async (req, res) => {
             elixir: existingUser[0].elixir,
             avatarCode: existingUser[0].avatarCode,
             civilization: existingUser2[0].civilization_points,
-            population: existingUser2[0].population_consumers
+            population: existingUser2[0].population_consumers,
+            cityName: existingUser[0].cityName
         };
 
         res.status(200).json(user);
