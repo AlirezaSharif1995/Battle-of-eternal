@@ -191,33 +191,40 @@ router.post('/getPlayerForces', async (req, res) => {
     }
 
     try {
-        // Fetch the player's forces from the `user_forces_json` table
+        // دریافت نیروهای بازیکن از جدول `user_forces_json`
         const [rows] = await pool.query('SELECT forces FROM user_forces_json WHERE user_id = ?', [playerToken]);
         if (rows.length === 0) {
             return res.status(404).json({ message: 'User not found' });
         }
+        const [Username] = await pool.query('SELECT username FROM users WHERE playerToken = ?', [playerToken]);
 
-        const userForces = (rows[0].forces || '{}');
 
-        // Check if the player has any forces
+        const userForces = rows[0].forces || '{}';
+
+        // دریافت نیروهای ارسال‌شده توسط بازیکن از جدول `guest_forces`
+        const [sentForces] = await pool.query('SELECT forces, receiverToken FROM guest_forces WHERE senderToken = ?', [Username[0].username]);
+
+        // دریافت نیروهای دریافت‌شده توسط بازیکن از جدول `guest_forces`
+        const [receivedForces] = await pool.query('SELECT forces, senderToken FROM guest_forces WHERE receiverToken = ?', [Username[0].username]);
+
+        // بررسی اینکه بازیکن نیرویی دارد یا نه
         const forceNames = Object.keys(userForces);
         if (forceNames.length === 0) {
             return res.json({
                 message: 'Player has no forces',
                 forces: [],
+                sentForces: [],
+                receivedForces: []
             });
         }
 
-        // Fetch details for the player's forces along with next-level costs
+        // دریافت اطلاعات نیروهای بازیکن
         const detailedForces = await Promise.all(
             forceNames.map(async (forceName) => {
-                const level = userForces[forceName]?.level; // Get the player's level for this force
-                const count = userForces[forceName]?.quantity; // Get the player's level for this force
-                if (!level) {
-                    return null; // Skip if no level is found for the force
-                }
+                const level = userForces[forceName]?.level;
+                const count = userForces[forceName]?.quantity;
+                if (!level) return null;
 
-                // Fetch current level details from the `forces` table
                 const [currentLevelDetails] = await pool.query(
                     `SELECT name, level, attack_power, defense_power, raid_capacity, speed, hp
                      FROM forces 
@@ -225,11 +232,8 @@ router.post('/getPlayerForces', async (req, res) => {
                     [forceName, level]
                 );
 
-                if (currentLevelDetails.length === 0) {
-                    return null; // Skip if no details found for this force and level
-                }
+                if (currentLevelDetails.length === 0) return null;
 
-                // Fetch next level details from the `forces` table
                 const [nextLevelDetails] = await pool.query(
                     `SELECT attack_power, defense_power, raid_capacity, speed, wheat_cost, wood_cost, iron_cost, elixir_cost, upgrade_time
                      FROM forces
@@ -237,7 +241,6 @@ router.post('/getPlayerForces', async (req, res) => {
                     [forceName, level + 1]
                 );
 
-                // Fetch next level details from the `forces` table
                 const [maxLevelDetails] = await pool.query(
                     `SELECT attack_power, defense_power, raid_capacity, speed, wheat_cost, wood_cost, iron_cost, elixir_cost, upgrade_time
                      FROM forces
@@ -247,12 +250,10 @@ router.post('/getPlayerForces', async (req, res) => {
 
                 const [createInfo] = await pool.query('SELECT * FROM updateforces WHERE name = ?', [forceName]);
 
-
-                // Build the response object for this force
                 return {
-                    ...currentLevelDetails[0], // Current level details
+                    ...currentLevelDetails[0],
                     count,
-                    createdAt: userForces[forceName]?.createdAt, // Add the creation date from player data
+                    createdAt: userForces[forceName]?.createdAt,
                     nextLevelCost: nextLevelDetails.length > 0
                         ? {
                             wheat: nextLevelDetails[0].wheat_cost,
@@ -265,32 +266,46 @@ router.post('/getPlayerForces', async (req, res) => {
                             defense_power: nextLevelDetails[0].defense_power,
                             upgradeTime: nextLevelDetails[0].upgrade_time,
                         }
-                        : null, // If no next level exists, set to null
-                    maxLevelDetails:
-                    {
+                        : null,
+                    maxLevelDetails: {
                         attack_power: maxLevelDetails[0].attack_power,
                         raid_capacity: maxLevelDetails[0].raid_capacity,
                         speed: maxLevelDetails[0].speed,
                         defense_power: maxLevelDetails[0].defense_power,
                     },
                     createInfo: createInfo[0]
-
                 };
             })
         );
 
-        // Filter out null values (in case of missing forces or mismatches)
         const filteredForces = detailedForces.filter((force) => force !== null);
 
         res.json({
             message: 'Player forces retrieved successfully',
             forces: filteredForces,
+            sentForces: sentForces.map(force => ({
+                receiverToken: force.receiverToken,
+                forces: Object.entries(typeof force.forces === 'string' ? JSON.parse(force.forces) : force.forces).map(([key, value]) => ({
+                    name: key, // Add name explicitly
+                    ...value // Spread the existing properties (level, quantity, etc.)
+                }))
+            })),
+            receivedForces: receivedForces.map(force => ({
+                senderToken: force.senderToken,
+                forces: Object.entries(typeof force.forces === 'string' ? JSON.parse(force.forces) : force.forces).map(([key, value]) => ({
+                    name: key, 
+                    ...value // Spread the existing properties
+                }))
+            }))
         });
+        
+
     } catch (error) {
         console.error('Error fetching player forces:', error);
         res.status(500).json({ message: 'Internal server error' });
     }
 });
+
 
 router.post('/createForces', async (req, res) => {
     const { playerToken, forceName, forceCount } = req.body;
@@ -535,6 +550,50 @@ console.log(req.body)
     }
 });
 
+router.post('/changeAvatar', async (req, res) => {
+
+    const { playerToken, avatarCode } = req.body;
+
+    try {
+
+        await pool.query('UPDATE users SET avatarCode = ? WHERE playerToken = ?', [avatarCode, playerToken]);
+        res.status(200).json({ message: 'Avatar updated successfully' });
+
+    } catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.post('/changeUsername', async (req, res) => {
+    const { playerToken, username } = req.body;
+
+    const [existingUser] = await pool.query('SELECT * FROM users WHERE username = ?', [username]);
+
+    if (existingUser.length > 0) {
+        return res.status(400).json({ error: 'username is already registered' });
+    }
+
+    try {
+        await pool.query('UPDATE users SET username = ? WHERE playerToken = ?', [username, playerToken]);
+        res.status(200).json({ message: 'Data updated successful' });
+
+    } catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.post('/changeBio', async (req, res) => {
+    const { playerToken, bio } = req.body;
+
+    try {
+        await pool.query('UPDATE users SET bio = ? WHERE playerToken = ?', [bio, playerToken]);
+        res.status(200).json({ message: 'Data updated successful' });
+
+    } catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 const checkForceCreationCompletion = async () => {
     try {
         // Fetch all force creation requests where the end time has passed
@@ -747,38 +806,6 @@ router.get('/recivedRequests', async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 
-});
-
-router.post('/changeAvatar', async (req, res) => {
-
-    const { playerToken, avatarCode } = req.body;
-
-    try {
-
-        await pool.query('UPDATE users SET avatarCode = ? WHERE playerToken = ?', [avatarCode, playerToken]);
-        res.status(200).json({ message: 'Avatar updated successfully' });
-
-    } catch (error) {
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-router.post('/changeUsername', async (req, res) => {
-    const { playerToken, username } = req.body;
-
-    const [existingUser] = await pool.query('SELECT * FROM users WHERE username = ?', [username]);
-
-    if (existingUser.length > 0) {
-        return res.status(400).json({ error: 'username is already registered' });
-    }
-
-    try {
-        await pool.query('UPDATE users SET username = ? WHERE playerToken = ?', [username, playerToken]);
-        res.status(200).json({ message: 'Data updated successful' });
-
-    } catch (error) {
-        res.status(500).json({ error: 'Internal server error' });
-    }
 });
 
 router.post('/changeMedals', async (req, res) => {

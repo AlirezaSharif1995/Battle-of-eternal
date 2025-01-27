@@ -108,7 +108,7 @@ router.post('/getDefence', async (req, res) => {
   }
 });
 
-router.post('/defenceUpdate', async (req,res)=>{
+router.post('/defenceUpdate', async (req, res) => {
   const { playerToken, defences } = req.body;
   try {
     const [existingUser] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [playerToken]);
@@ -289,5 +289,73 @@ router.post('/getResource', async (req, res) => {
   }
 });
 
+router.post('/sendForces', async (req, res) => {
+  const { senderToken, receiverToken, forcesToSend } = req.body;
+  try {
+    const [sender] = await pool.query('SELECT * FROM user_forces_json WHERE user_id = ?', [senderToken]);
+    const [receiver] = await pool.query('SELECT * FROM user_forces_json WHERE user_id = ?', [receiverToken]);
+    const [senderUsername] = await pool.query('SELECT username FROM users WHERE playerToken = ?', [senderToken]);
+    const [receiverUsername] = await pool.query('SELECT username FROM users WHERE playerToken = ?', [receiverToken]);
+
+    if (sender.length === 0 || receiver.length === 0) {
+      return res.status(404).json({ error: 'Sender or receiver not found' });
+    }
+
+    let senderForces = sender[0].forces;
+
+    for (let unit in forcesToSend) {
+      if (!senderForces[unit] || senderForces[unit].quantity < forcesToSend[unit]) {
+        return res.status(400).json({ error: `Not enough ${unit} to send` });
+      }
+    }
+
+    for (let unit in forcesToSend) {
+      senderForces[unit].quantity -= forcesToSend[unit];
+    }
+
+    let forcesWithLevel = {};
+    for (let unit in forcesToSend) {
+      forcesWithLevel[unit] = {
+        level: senderForces[unit].level,
+        quantity: forcesToSend[unit]
+      };
+    }
+
+    await pool.query('INSERT INTO guest_forces (senderToken, receiverToken, forces) VALUES (?, ?, ?)',
+      [senderUsername[0].username, receiverUsername[0].username, JSON.stringify(forcesWithLevel)]);
+
+    await pool.query('UPDATE user_forces_json SET forces = ? WHERE user_id = ?', [JSON.stringify(senderForces), senderToken]);
+
+    res.status(200).json({ message: 'Forces sent successfully' });
+
+  } catch (error) {
+    console.error('Error sending forces:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
+router.post('/getGuestForces', async (req, res) => {
+  const { playerToken } = req.body;
+
+  try {
+    const [guestForces] = await pool.query('SELECT * FROM guest_forces WHERE receiverToken = ? OR senderToken = ?', [playerToken, playerToken]);
+
+    if (guestForces.length === 0) {
+      return res.status(200).json({ message: 'No guest forces', forces: [] });
+    }
+
+    res.status(200).json({ forces: guestForces });
+
+  } catch (error) {
+    console.error('Error fetching guest forces:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
+router.post('/backForce', async (req, res) => {
+
+});
 
 module.exports = router;

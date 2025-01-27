@@ -119,7 +119,11 @@ router.post('/getCities', async (req, res) => {
         for (const user of users) {
             validUsers.push({
                 playerToken: user.playerToken,
+                username: user.username,
+                avatar: user.avatarCode,
                 cityName: user.cityName,
+                bio: user.bio,
+                population : user.population,
                 citypositionY: user.citypositionY,
                 citypositionX: user.citypositionX
             });
