@@ -290,11 +290,12 @@ router.post('/getResource', async (req, res) => {
 });
 
 router.post('/sendForces', async (req, res) => {
-  const { senderToken, receiverToken, forcesToSend } = req.body;
+  const { playerToken, receiverToken, forcesToSend } = req.body;
+
   try {
-    const [sender] = await pool.query('SELECT * FROM user_forces_json WHERE user_id = ?', [senderToken]);
+    const [sender] = await pool.query('SELECT * FROM user_forces_json WHERE user_id = ?', [playerToken]);
     const [receiver] = await pool.query('SELECT * FROM user_forces_json WHERE user_id = ?', [receiverToken]);
-    const [senderUsername] = await pool.query('SELECT username FROM users WHERE playerToken = ?', [senderToken]);
+    const [senderUsername] = await pool.query('SELECT username FROM users WHERE playerToken = ?', [playerToken]);
     const [receiverUsername] = await pool.query('SELECT username FROM users WHERE playerToken = ?', [receiverToken]);
 
     if (sender.length === 0 || receiver.length === 0) {
@@ -302,29 +303,39 @@ router.post('/sendForces', async (req, res) => {
     }
 
     let senderForces = sender[0].forces;
+    let formattedForces = {};
 
-    for (let unit in forcesToSend) {
-      if (!senderForces[unit] || senderForces[unit].quantity < forcesToSend[unit]) {
+    forcesToSend.forEach(force => {
+      formattedForces[force.forceName] = force.count;
+    });
+
+    for (let unit in formattedForces) {
+      if (!senderForces[unit] || senderForces[unit].quantity < formattedForces[unit]) {
         return res.status(400).json({ error: `Not enough ${unit} to send` });
       }
     }
 
-    for (let unit in forcesToSend) {
-      senderForces[unit].quantity -= forcesToSend[unit];
+    for (let unit in formattedForces) {
+      senderForces[unit].quantity -= formattedForces[unit];
     }
 
     let forcesWithLevel = {};
-    for (let unit in forcesToSend) {
+    for (let unit in formattedForces) {
       forcesWithLevel[unit] = {
         level: senderForces[unit].level,
-        quantity: forcesToSend[unit]
+        quantity: formattedForces[unit]
       };
     }
 
-    await pool.query('INSERT INTO guest_forces (senderToken, receiverToken, forces) VALUES (?, ?, ?)',
-      [senderUsername[0].username, receiverUsername[0].username, JSON.stringify(forcesWithLevel)]);
+    await pool.query(
+      'INSERT INTO guest_forces (senderToken, receiverToken, forces) VALUES (?, ?, ?)',
+      [senderUsername[0].username, receiverUsername[0].username, JSON.stringify(forcesWithLevel)]
+    );
 
-    await pool.query('UPDATE user_forces_json SET forces = ? WHERE user_id = ?', [JSON.stringify(senderForces), senderToken]);
+    await pool.query(
+      'UPDATE user_forces_json SET forces = ? WHERE user_id = ?',
+      [JSON.stringify(senderForces), playerToken]
+    );
 
     res.status(200).json({ message: 'Forces sent successfully' });
 
@@ -335,20 +346,50 @@ router.post('/sendForces', async (req, res) => {
 });
 
 
-router.post('/getGuestForces', async (req, res) => {
-  const { playerToken } = req.body;
+
+router.post('/backForce', async (req, res) => {
+  const { id } = req.body;
 
   try {
-    const [guestForces] = await pool.query('SELECT * FROM guest_forces WHERE receiverToken = ? OR senderToken = ?', [playerToken, playerToken]);
 
-    if (guestForces.length === 0) {
-      return res.status(200).json({ message: 'No guest forces', forces: [] });
+    const [forceEntry] = await pool.query('SELECT * FROM guest_forces WHERE id = ?', [id]);
+
+    if (forceEntry.length === 0) {
+      return res.status(404).json({ error: 'Force entry not found' });
     }
 
-    res.status(200).json({ forces: guestForces });
+    const { senderToken, forces } = forceEntry[0];
+    const [sender] = await pool.query('SELECT playerToken FROM users WHERE username = ?', [senderToken]);
+
+
+    const [playerForcesData] = await pool.query('SELECT forces FROM user_forces_json WHERE user_id = ?', [sender[0].playerToken]);
+
+    if (playerForcesData.length === 0) {
+      return res.status(404).json({ error: 'Player not found in forces database' });
+    }
+
+    let playerForces = (playerForcesData[0].forces); // Convert stored JSON to object
+    let forcesToReturn = (forces); // Convert stored forces to object
+
+    // Loop through each force unit and add it back to the player’s forces
+    for (let unit in forcesToReturn) {
+      if (!playerForces[unit]) {
+        playerForces[unit] = {
+          level: forcesToReturn[unit].level,
+          quantity: forcesToReturn[unit].quantity
+        };
+      } else {
+        playerForces[unit].quantity += forcesToReturn[unit].quantity;
+      }
+    }
+
+    await pool.query('UPDATE user_forces_json SET forces = ? WHERE user_id = ?', [JSON.stringify(playerForces), sender[0].playerToken]);
+    await pool.query('DELETE FROM guest_forces WHERE id = ?', [id]);
+
+    res.status(200).json({ message: 'Forces returned successfully' });
 
   } catch (error) {
-    console.error('Error fetching guest forces:', error);
+    console.error('Error processing force return:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

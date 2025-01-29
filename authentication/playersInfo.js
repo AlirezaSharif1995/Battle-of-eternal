@@ -201,13 +201,10 @@ router.post('/getPlayerForces', async (req, res) => {
 
         const userForces = rows[0].forces || '{}';
 
-        // دریافت نیروهای ارسال‌شده توسط بازیکن از جدول `guest_forces`
-        const [sentForces] = await pool.query('SELECT forces, receiverToken FROM guest_forces WHERE senderToken = ?', [Username[0].username]);
+        const [sentForces] = await pool.query('SELECT id, forces, receiverToken FROM guest_forces WHERE senderToken = ?', [Username[0].username]);
 
-        // دریافت نیروهای دریافت‌شده توسط بازیکن از جدول `guest_forces`
-        const [receivedForces] = await pool.query('SELECT forces, senderToken FROM guest_forces WHERE receiverToken = ?', [Username[0].username]);
+        const [receivedForces] = await pool.query('SELECT id, forces, senderToken FROM guest_forces WHERE receiverToken = ?', [Username[0].username]);
 
-        // بررسی اینکه بازیکن نیرویی دارد یا نه
         const forceNames = Object.keys(userForces);
         if (forceNames.length === 0) {
             return res.json({
@@ -285,6 +282,7 @@ router.post('/getPlayerForces', async (req, res) => {
             forces: filteredForces,
             sentForces: sentForces.map(force => ({
                 receiverToken: force.receiverToken,
+                id: force.id,
                 forces: Object.entries(typeof force.forces === 'string' ? JSON.parse(force.forces) : force.forces).map(([key, value]) => ({
                     name: key, // Add name explicitly
                     ...value // Spread the existing properties (level, quantity, etc.)
@@ -292,6 +290,7 @@ router.post('/getPlayerForces', async (req, res) => {
             })),
             receivedForces: receivedForces.map(force => ({
                 senderToken: force.senderToken,
+                id: force.id,
                 forces: Object.entries(typeof force.forces === 'string' ? JSON.parse(force.forces) : force.forces).map(([key, value]) => ({
                     name: key, 
                     ...value // Spread the existing properties
