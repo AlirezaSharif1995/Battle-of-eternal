@@ -14,12 +14,18 @@ const pool = mysql.createPool({
 });
 
 router.post('/', async(req,res)=>{
-    const { name, description, leader_id, avatarCode, mode } = req.body;
+    const { name, description, leader_id, avatarCode } = req.body;
 
     try {
         const token = generateRandomToken();
-        await pool.query('INSERT INTO clans (id, name, description, leader_id, avatarCode, mode) VALUES (?, ?, ?, ?, ?, ?)', [token, name, description, leader_id, avatarCode, mode]);
-        await pool.query('UPDATE users SET clan_id = ?, clan_role = ? WHERE playerToken = ?', [token, "leader", leader_id]);
+        const [existingUser] = await pool.query('SELECT gem FROM users WHERE playerToken = ?', [leader_id]);
+
+        if(existingUser[0].gem < 100){
+            return res.status(404).json({ message: 'Need More Gems!' });
+        }
+
+        await pool.query('INSERT INTO clans (id, name, description, leader_id, avatarCode) VALUES (?, ?, ?, ?, ?)', [token, name, description, leader_id, avatarCode]);
+        await pool.query('UPDATE users SET clan_id = ?, clan_role = ?, gem = gem - 100 WHERE playerToken = ?', [token, "leader", leader_id]);
         res.status(201).json({ message: 'Alliance registered successfully', clanToken: token });
     } catch (error) {
         console.log(error);

@@ -36,7 +36,11 @@ router.post('/getPlayerInfo', async (req, res) => {
             avatarCode: existingUser[0].avatarCode,
             civilization: existingUser2[0].civilization_points,
             population: existingUser2[0].population_consumers,
-            cityName: existingUser[0].cityName
+            cityName: existingUser[0].cityName,
+            clan: existingUser[0].clan_id,
+            clanRole: existingUser[0].clan_role,
+            gem: existingUser[0].gem
+
         };
 
         res.status(200).json(user);
@@ -50,8 +54,8 @@ router.post('/getPlayerInfo', async (req, res) => {
 });
 
 router.post('/levelupForces', async (req, res) => {
-    const { userId, forceName } = req.body;
-
+    const { playerToken, forceName } = req.body;
+    const userId = playerToken;
     if (!userId || !forceName) {
         return res.status(400).json({ message: 'Invalid request data' });
     }
@@ -136,6 +140,94 @@ router.post('/levelupForces', async (req, res) => {
     }
 });
 
+router.post('/cancelLevelupForces', async (req, res) => {
+    const { playerToken, forceName } = req.body;
+    const userId = playerToken;
+    if (!userId || !forceName) {
+        return res.status(400).json({ message: 'Invalid request data' });
+    }
+
+    try {
+        // دریافت نیروها و نیروهای در حال آپدیت از دیتابیس
+        const [rows] = await pool.query(
+            'SELECT forces, upgrading_forces FROM user_forces_json WHERE user_id = ?',
+            [userId]
+        );
+        if (rows.length === 0) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        // پارس کردن اطلاعات ذخیره شده به صورت JSON
+        const forces = typeof rows[0].forces === 'string'
+            ? JSON.parse(rows[0].forces || '{}')
+            : rows[0].forces || {};
+        const upgradingForces = typeof rows[0].upgrading_forces === 'string'
+            ? JSON.parse(rows[0].upgrading_forces || '{}')
+            : rows[0].upgrading_forces || {};
+
+        // بررسی اینکه آیا نیروی مورد نظر در حال آپدیت است یا خیر
+        if (!upgradingForces[forceName]) {
+            return res.status(400).json({ message: 'Force is not currently upgrading' });
+        }
+
+        // دریافت اطلاعات آپدیت برای نیروی مورد نظر
+        const upgradeData = upgradingForces[forceName];
+        const nextLevel = upgradeData.nextLevel;
+
+        // دریافت هزینه‌های مربوط به آپدیت سطح بعدی از دیتابیس
+        const [forceDetails] = await pool.query(
+            'SELECT wood_cost, iron_cost, elixir_cost, wheat_cost FROM forces WHERE name = ? AND level = ?',
+            [forceName, nextLevel]
+        );
+        if (forceDetails.length === 0) {
+            return res.status(400).json({ message: 'Upgrade details not found' });
+        }
+
+        const { wood_cost, iron_cost, elixir_cost, wheat_cost } = forceDetails[0];
+
+        // محاسبه 50٪ منابع برای بازگشت به کاربر (با گرد کردن به پایین)
+        const refundWood = Math.floor(wood_cost * 0.5);
+        const refundIron = Math.floor(iron_cost * 0.5);
+        const refundElixir = Math.floor(elixir_cost * 0.5);
+        const refundWheat = Math.floor(wheat_cost * 0.5);
+
+        // بازگرداندن منابع به کاربر (تابع creditResources باید طبق نیازهای شما پیاده‌سازی شود)
+        const creditSuccess = await creditResources(userId, {
+            wood: refundWood,
+            iron: refundIron,
+            elixir: refundElixir,
+            wheat: refundWheat,
+        });
+        if (!creditSuccess) {
+            return res.status(500).json({ message: 'Error refunding resources' });
+        }
+
+        // حذف نیروی کنسل شده از شیء upgradingForces
+        delete upgradingForces[forceName];
+
+        // ذخیره تغییرات جدید upgrading_forces در دیتابیس
+        await pool.query(
+            'UPDATE user_forces_json SET upgrading_forces = ? WHERE user_id = ?',
+            [JSON.stringify(upgradingForces), userId]
+        );
+
+        res.json({
+            message: 'Upgrade cancelled successfully. 50% of the resources have been refunded.',
+            refundedResources: {
+                wood: refundWood,
+                iron: refundIron,
+                elixir: refundElixir,
+                wheat: refundWheat,
+            },
+            upgradingForces,
+        });
+    } catch (error) {
+        console.error('Error cancelling upgrade:', error.message, error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+
 router.post('/addForce', async (req, res) => {
     const { playerToken, forceName } = req.body;
 
@@ -192,11 +284,16 @@ router.post('/getPlayerForces', async (req, res) => {
 
     try {
         // دریافت نیروهای بازیکن از جدول `user_forces_json`
-        const [rows] = await pool.query('SELECT forces FROM user_forces_json WHERE user_id = ?', [playerToken]);
+        const [rows] = await pool.query('SELECT forces, upgrading_forces FROM user_forces_json WHERE user_id = ?', [playerToken]);
         if (rows.length === 0) {
             return res.status(404).json({ message: 'User not found' });
         }
         const [Username] = await pool.query('SELECT username FROM users WHERE playerToken = ?', [playerToken]);
+
+        const upgradingForces = rows[0].upgrading_forces
+            ? (rows[0].upgrading_forces)
+            : {};
+
 
 
         const userForces = rows[0].forces || '{}';
@@ -215,6 +312,8 @@ router.post('/getPlayerForces', async (req, res) => {
             });
         }
 
+
+
         // دریافت اطلاعات نیروهای بازیکن
         const detailedForces = await Promise.all(
             forceNames.map(async (forceName) => {
@@ -229,6 +328,14 @@ router.post('/getPlayerForces', async (req, res) => {
                     [forceName, level]
                 );
 
+                // بررسی می‌کنیم که آیا نیرو در حال آپدیت هست یا خیر
+                const isUpgrading = upgradingForces[forceName] ? true : false;
+                let remainingTime = 0;
+                if (isUpgrading) {
+                    // محاسبه زمان باقی‌مانده با استفاده از endTime موجود در upgradingForces
+                    const upgradeData = upgradingForces[forceName];
+                    remainingTime = Math.max(new Date(upgradeData.endTime) - new Date(), 0);
+                }
                 if (currentLevelDetails.length === 0) return null;
 
                 const [nextLevelDetails] = await pool.query(
@@ -251,6 +358,8 @@ router.post('/getPlayerForces', async (req, res) => {
                     ...currentLevelDetails[0],
                     count,
                     createdAt: userForces[forceName]?.createdAt,
+                    isUpgrading: upgradingForces[forceName] ? true : false, // اینجا بررسی می‌کنیم
+                    remainingTime, // زمان باقی‌مانده یا 0 در صورت عدم آپدیت
                     nextLevelCost: nextLevelDetails.length > 0
                         ? {
                             wheat: nextLevelDetails[0].wheat_cost,
@@ -292,19 +401,18 @@ router.post('/getPlayerForces', async (req, res) => {
                 senderToken: force.senderToken,
                 id: force.id,
                 forces: Object.entries(typeof force.forces === 'string' ? JSON.parse(force.forces) : force.forces).map(([key, value]) => ({
-                    name: key, 
+                    name: key,
                     ...value // Spread the existing properties
                 }))
-            }))
+            })),
         });
-        
+
 
     } catch (error) {
         console.error('Error fetching player forces:', error);
         res.status(500).json({ message: 'Internal server error' });
     }
 });
-
 
 router.post('/createForces', async (req, res) => {
     const { playerToken, forceName, forceCount } = req.body;
@@ -493,7 +601,7 @@ router.post('/getCreatingForces', async (req, res) => {
 
 router.post('/cancelForceCreation', async (req, res) => {
     const { playerToken, createID } = req.body;
-console.log(req.body)
+    console.log(req.body)
     if (!playerToken || !createID) {
         return res.status(400).json({ message: 'Invalid request data' });
     }
@@ -767,6 +875,25 @@ function toLocalMySQLDatetime(date) {
     return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 
+async function creditResources(userId, resourcesToCredit) {
+    try {
+        const { wood, iron, elixir, wheat } = resourcesToCredit;
+        // به‌روزرسانی منابع کاربر با افزودن مقادیر دریافتی
+        await pool.query(
+            `UPDATE users
+         SET wood = wood + ?,
+             iron = iron + ?,
+             elixir = elixir + ?,
+             wheat = wheat + ?
+         WHERE playerToken = ?`,
+            [wood, iron, elixir, wheat, userId]
+        );
+        return true;
+    } catch (error) {
+        console.error("Error crediting resources:", error.message);
+        return false;
+    }
+}
 
 
 

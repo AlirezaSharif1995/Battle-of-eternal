@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const mysql = require('mysql2/promise');
 
-
 const pool = mysql.createPool({
     host: 'localhost',
     user: 'root',
@@ -15,9 +14,29 @@ const pool = mysql.createPool({
 
 router.post('/join', async (req, res) => {
 
-    const { clan_id, playerToken, role } = req.body;
+    const { clan_id, playerToken, clanRole } = req.body;
     try {
-        await pool.query('UPDATE users SET clan_id = ?, clan_role = ? WHERE playerToken = ?', [clan_id, role, playerToken]);
+        await pool.query('UPDATE users SET clan_id = ?, clan_role = ? WHERE playerToken = ?', [clan_id, clanRole, playerToken]);
+
+        const [rows] = await pool.query('SELECT * FROM clans WHERE id = ?', [clan_id]);
+
+        if (rows.length === 0) {
+            return res.status(404).json({ error: 'Clan not found' });
+        }
+
+        const clan = rows[0];
+        let updatedRequestList = clan.recivedRequests ? JSON.parse(clan.recivedRequests) : [];
+
+        if (!updatedRequestList.includes(playerToken)) {
+            return res.status(400).json({ error: 'Player not found in the list' });
+        }
+
+        updatedRequestList = updatedRequestList.filter(token => token !== playerToken);
+
+        await pool.query('UPDATE clans SET recivedRequests = ? WHERE id = ?', [JSON.stringify(updatedRequestList), clan_id]);
+
+
+        
         res.status(201).json({ message: 'Player joined successfully' });
 
     } catch (error) {
@@ -41,10 +60,49 @@ router.post('/leave', async (req, res) => {
 router.post('/clanInfo', async (req, res) => {
     const { clan_id } = req.body;
     try {
-        const [clan] = await pool.query('SELECT * FROM clans WHERE id = ?', [clan_id]);
-        res.status(201).json({ message: 'clan information :', clan });
+        // دریافت اطلاعات قبیله
+        const [clanResult] = await pool.query('SELECT * FROM clans WHERE id = ?', [clan_id]);
+
+        if (clanResult.length === 0) {
+            return res.status(404).json({ error: 'Clan not found' });
+        }
+
+        let clan = clanResult[0];
+
+        // دریافت اعضای قبیله
+        const [members] = await pool.query(
+            'SELECT playerToken, avatarCode, username, clan_role AS clanRole FROM users WHERE clan_id = ?', 
+            [clan_id]
+        );
+
+        // پردازش درخواست‌های دریافتی
+        let receivedRequests = [];
+        let receivedRequestsIds = [];
+
+        if (clan.recivedRequests) {
+            try {
+                receivedRequestsIds = JSON.parse(clan.recivedRequests);
+                if (!Array.isArray(receivedRequestsIds)) {
+                    receivedRequestsIds = [];
+                }
+            } catch (e) {
+                console.error("Error parsing recivedRequests:", e);
+                receivedRequestsIds = [];
+            }
+        }
+
+        if (receivedRequestsIds.length > 0) {
+            const [requests] = await pool.query(
+                'SELECT playerToken, username, avatarCode FROM users WHERE playerToken IN (?)',
+                [receivedRequestsIds]
+            );
+            receivedRequests = requests;
+        }
+
+        res.status(201).json({ clan, members, receivedRequests });
 
     } catch (error) {
+        console.error(error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -78,17 +136,17 @@ router.post('/sendRequest', async (req, res) => {
 });
 
 router.post('/invitePlayer', async (req, res) => {
-    const { playerToken, clan_id } = req.body;
+    const { username, clan_id } = req.body;
     try {
 
-        const [rows] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [playerToken]);
+        const [rows] = await pool.query('SELECT * FROM users WHERE username = ?', [username]);
 
         if (rows.length === 0) {
-            return res.status(404).json({ error: 'Clan not found' });
+            return res.status(404).json({ error: 'User not found' });
         }
 
         const player = rows[0];
-        const updatedRequestList = player.recivedRequests ? JSON.parse(player.recivedRequests) : [];
+        const updatedRequestList = player.recivedRequests ? (player.recivedRequests) : [];
 
         if (!updatedRequestList.includes(clan_id)) {
             updatedRequestList.push(clan_id);
@@ -96,7 +154,7 @@ router.post('/invitePlayer', async (req, res) => {
             return res.status(400).json({ error: 'clan request already exists in the list' });
         }
 
-        await pool.query('UPDATE users SET recivedRequests = ? WHERE playerToken = ?', [JSON.stringify(updatedRequestList), playerToken]);
+        await pool.query('UPDATE users SET recivedRequests = ? WHERE username = ?', [JSON.stringify(updatedRequestList), username]);
 
         res.status(201).json({ message: 'Request sent!' });
     } catch (error) {

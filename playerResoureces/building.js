@@ -465,6 +465,107 @@ router.post('/GetUpgradingBuildings', async (req, res) => {
     }
 });
 
+router.post('/CancelBuildingUpgrade', async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+        const { playerToken, buildingID } = req.body;
+        if (!playerToken || !buildingID) {
+            return res.status(400).json({ error: 'Invalid input' });
+        }
+
+        // بررسی وجود آپگرید در حال اجرا برای ساختمان
+        const [upgradeData] = await connection.execute(
+            'SELECT * FROM buildingUpgrades WHERE playerToken = ? AND buildingID = ?',
+            [playerToken, buildingID]
+        );
+        if (upgradeData.length === 0) {
+            return res.status(404).json({ error: 'No building upgrade in progress' });
+        }
+
+        // دریافت اطلاعات ساختمان‌های کاربر
+        const [playerData] = await connection.execute(
+            'SELECT buildings FROM playerbuildings WHERE playerToken = ?',
+            [playerToken]
+        );
+        if (playerData.length === 0) {
+            return res.status(404).json({ error: 'Player not found' });
+        }
+        // فرض کنید فیلد buildings به صورت JSON ذخیره شده است
+        const buildings = typeof playerData[0].buildings === 'string'
+            ? JSON.parse(playerData[0].buildings)
+            : playerData[0].buildings;
+        const buildingToCancel = buildings.find(b => b.building_id === buildingID);
+        if (!buildingToCancel) {
+            return res.status(404).json({ error: 'Building not found' });
+        }
+        const currentLevel = buildingToCancel.level;
+
+        // دریافت هزینه‌های آپگرید از جدول buildinglevels برای سطح بعدی
+        const [levelData] = await connection.execute(
+            'SELECT cost FROM buildinglevels WHERE building_id = ? AND level = ?',
+            [buildingID, currentLevel + 1]
+        );
+        if (levelData.length === 0) {
+            return res.status(404).json({ error: 'Upgrade details not found' });
+        }
+        // فرض کنید ستون cost به صورت JSON ذخیره شده است
+        const upgradeCost = typeof levelData[0].cost === 'string'
+            ? JSON.parse(levelData[0].cost)
+            : levelData[0].cost;
+
+        // محاسبه بازگشت 50 درصد منابع (گرد به پایین)
+        const refundResources = {};
+        for (const resource in upgradeCost) {
+            refundResources[resource] = Math.floor(upgradeCost[resource] * 0.5);
+        }
+
+        // دریافت منابع فعلی کاربر
+        const [userData] = await connection.execute(
+            'SELECT iron, wood, stone, wheat FROM users WHERE playerToken = ?',
+            [playerToken]
+        );
+        if (userData.length === 0) {
+            return res.status(404).json({ error: 'Player resources not found' });
+        }
+        const playerResources = userData[0];
+
+        // محاسبه منابع به‌روز شده با اضافه کردن بازگشت
+        const updatedResources = {
+            iron: playerResources.iron + (refundResources.iron || 0),
+            wood: playerResources.wood + (refundResources.wood || 0),
+            stone: playerResources.stone + (refundResources.stone || 0),
+            wheat: playerResources.wheat + (refundResources.wheat || 0)
+        };
+
+        await connection.beginTransaction();
+
+        // به‌روز رسانی منابع کاربر (افزودن 50 درصد بازگشتی)
+        await connection.execute(
+            'UPDATE users SET iron = ?, wood = ?, stone = ?, wheat = ? WHERE playerToken = ?',
+            [updatedResources.iron, updatedResources.wood, updatedResources.stone, updatedResources.wheat, playerToken]
+        );
+
+        // حذف رکورد آپگرید از جدول buildingUpgrades
+        await connection.execute(
+            'DELETE FROM buildingUpgrades WHERE playerToken = ? AND buildingID = ?',
+            [playerToken, buildingID]
+        );
+
+        await connection.commit();
+        return res.status(200).json({ 
+            message: 'Building upgrade cancelled successfully', 
+            refundedResources: refundResources 
+        });
+    } catch (error) {
+        console.error(error);
+        if (connection) await connection.rollback();
+        res.status(500).json({ error: 'Internal server error' });
+    } finally {
+        if (connection) connection.release();
+    }
+});
+
+
 cron.schedule('*/10 * * * * *', async () => {
 
     try {
@@ -498,7 +599,7 @@ cron.schedule('*/10 * * * * *', async () => {
 
             const [stats] = await pool.execute(
                 'SELECT stats FROM buildinglevels WHERE building_id = ? AND level = ?',
-                [buildingID,buildingToUpdate.level + 1]
+                [buildingID,buildingToUpdate.level]
             );
 
             const [statsBefore] = await pool.execute(

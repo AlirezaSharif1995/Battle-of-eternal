@@ -345,8 +345,6 @@ router.post('/sendForces', async (req, res) => {
   }
 });
 
-
-
 router.post('/backForce', async (req, res) => {
   const { id } = req.body;
 
@@ -392,11 +390,6 @@ router.post('/backForce', async (req, res) => {
     console.error('Error processing force return:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
-});
-
-
-router.post('/backForce', async (req, res) => {
-
 });
 
 module.exports = router;
