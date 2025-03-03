@@ -289,9 +289,7 @@ router.post('/getResource', async (req, res) => {
   }
 });
 
-router.post('/sendForces', async (req, res) => {
-  const { playerToken, receiverToken, forcesToSend } = req.body;
-
+async function sendingForce(playerToken, receiverToken, forcesToSend) {
   try {
     const [sender] = await pool.query('SELECT * FROM user_forces_json WHERE user_id = ?', [playerToken]);
     const [receiver] = await pool.query('SELECT * FROM user_forces_json WHERE user_id = ?', [receiverToken]);
@@ -299,25 +297,32 @@ router.post('/sendForces', async (req, res) => {
     const [receiverUsername] = await pool.query('SELECT username FROM users WHERE playerToken = ?', [receiverToken]);
 
     if (sender.length === 0 || receiver.length === 0) {
-      return res.status(404).json({ error: 'Sender or receiver not found' });
+      console.log("Sender or receiver not found");
+      return;
     }
 
-    let senderForces = sender[0].forces;
+    let senderForces = (sender[0].forces);
     let formattedForces = {};
 
-    forcesToSend.forEach(force => {
-      formattedForces[force.forceName] = force.count;
-    });
-
-    for (let unit in formattedForces) {
-      if (!senderForces[unit] || senderForces[unit].quantity < formattedForces[unit]) {
-        return res.status(400).json({ error: `Not enough ${unit} to send` });
-      }
+    if (typeof forcesToSend === 'object' && !Array.isArray(forcesToSend)) {
+      Object.entries(forcesToSend).forEach(([forceName, count]) => {
+        formattedForces[forceName] = count;
+      });
+    } else {
+      console.log("forcesToSend is not a valid object:", forcesToSend);
+      return;
     }
 
-    for (let unit in formattedForces) {
-      senderForces[unit].quantity -= formattedForces[unit];
-    }
+    // for (let unit in formattedForces) {
+    //   if (!senderForces[unit] || senderForces[unit].quantity < formattedForces[unit]) {
+    //     console.log(`Not enough ${unit} to send`);
+    //     return;
+    //   }
+    // }
+
+    // for (let unit in formattedForces) {
+    //   senderForces[unit].quantity -= formattedForces[unit];
+    // }
 
     let forcesWithLevel = {};
     for (let unit in formattedForces) {
@@ -332,18 +337,17 @@ router.post('/sendForces', async (req, res) => {
       [senderUsername[0].username, receiverUsername[0].username, JSON.stringify(forcesWithLevel)]
     );
 
-    await pool.query(
-      'UPDATE user_forces_json SET forces = ? WHERE user_id = ?',
-      [JSON.stringify(senderForces), playerToken]
-    );
+    // await pool.query(
+    //   'UPDATE user_forces_json SET forces = ? WHERE user_id = ?',
+    //   [JSON.stringify(senderForces), playerToken]
+    // );
 
-    res.status(200).json({ message: 'Forces sent successfully' });
+    console.log('Forces sent successfully');
 
   } catch (error) {
     console.error('Error sending forces:', error);
-    res.status(500).json({ error: 'Internal server error' });
   }
-});
+}
 
 router.post('/backForce', async (req, res) => {
   const { id } = req.body;
@@ -392,4 +396,194 @@ router.post('/backForce', async (req, res) => {
   }
 });
 
+router.post('/TimingAction', async (req, res) => {
+  let { playerToken, receiverToken, forcesToSend } = req.body;
+  const senderToken = playerToken;
+
+  let formattedForces = {};
+
+  if (Array.isArray(forcesToSend)) {
+    forcesToSend.forEach(force => {
+      formattedForces[force.forceName] = force.count;
+    });
+  } else {
+    formattedForces = forcesToSend; // اگر فرمت درست بود، تغییر نده
+  }
+  console.log("Formatted Forces:", formattedForces);
+
+  try {
+    // دریافت مختصات شهر فرستنده و گیرنده
+    const [senderData] = await pool.query(
+      'SELECT citypositionX, citypositionY FROM users WHERE playerToken = ?',
+      [senderToken]
+    );
+
+    const [receiverData] = await pool.query(
+      'SELECT citypositionX, citypositionY FROM users WHERE playerToken = ?',
+      [receiverToken]
+    );
+
+    if (senderData.length === 0 || receiverData.length === 0) {
+      return res.status(404).json({ error: 'One or both players not found' });
+    }
+
+    const senderCity = senderData[0];
+    const receiverCity = receiverData[0];
+
+    const distance = calculateDistance(
+      senderCity.citypositionX, senderCity.citypositionY,
+      receiverCity.citypositionX, receiverCity.citypositionY
+    );
+
+    // دریافت اطلاعات نیروهای فرستنده
+    const [playerForcesData] = await pool.query(
+      'SELECT forces FROM user_forces_json WHERE user_id = ?',
+      [senderToken]
+    );
+
+    if (playerForcesData.length === 0) {
+      return res.status(400).json({ error: 'Sender has no forces' });
+    }
+
+    let senderForces = (playerForcesData[0].forces); // تبدیل JSON به آبجکت
+
+    let minSpeed = Infinity;
+
+    for (const forceName in formattedForces) {
+
+      if (senderForces[forceName] && senderForces[forceName].quantity >= formattedForces[forceName]) {
+        const forceLevel = senderForces[forceName].level;
+
+        // دریافت سرعت نیروی موردنظر از جدول نیروها
+        const [forceDetails] = await pool.query(
+          'SELECT speed FROM forces WHERE name = ? AND level = ?',
+          [forceName, forceLevel]
+        );
+
+        if (forceDetails.length > 0) {
+          const forceSpeed = forceDetails[0].speed * 10;
+          minSpeed = Math.min(minSpeed, forceSpeed);
+          senderForces[forceName].quantity -= formattedForces[forceName];
+        } else {
+          return res.status(400).json({ error: `Force data not found for ${forceName}` });
+        }
+      } else {
+        return res.status(400).json({ error: `Insufficient quantity for ${forceName}` });
+      }
+    }
+
+    if (minSpeed === Infinity) {
+      return res.status(400).json({ error: 'No valid forces found to send' });
+    }
+
+    const estimatedTime = distance / minSpeed;
+
+    await pool.query(
+      'UPDATE user_forces_json SET forces = ? WHERE user_id = ?',
+      [JSON.stringify(senderForces), senderToken]
+    );
+
+    await pool.query(
+      'INSERT INTO moving_forces (sender_id, receiver_id, forces, arrival_time) VALUES (?, ?, ?, ADDTIME(NOW(), SEC_TO_TIME(?)))',
+      [senderToken, receiverToken, JSON.stringify(formattedForces), estimatedTime * 3600]
+    );
+
+    res.status(200).json({ distance, minSpeed, estimatedTime });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/returnSendingForce', async (req, res) => {
+  const { id } = req.body;
+
+  try {
+    // دریافت نیروهای در حال حرکت و پیدا کردن فرستنده
+    const [movingForceData] = await pool.query(
+      'SELECT sender_id, forces FROM moving_forces WHERE id = ?',
+      [id]
+    );
+
+    if (movingForceData.length === 0) {
+      return res.status(400).json({ error: 'No valid forces found to return' });
+    }
+
+    const senderId = movingForceData[0].sender_id;
+    const returnedForces = (movingForceData[0].forces); // تبدیل به آبجکت
+
+    // دریافت لیست نیروهای فعلی فرستنده
+    const [playerForcesData] = await pool.query(
+      'SELECT forces FROM user_forces_json WHERE user_id = ?',
+      [senderId]
+    );
+
+    if (playerForcesData.length === 0) {
+      return res.status(400).json({ error: 'Sender not found' });
+    }
+
+    let senderForces = (playerForcesData[0].forces); // تبدیل به آبجکت
+
+    // اضافه کردن نیروهای برگشتی به نیروهای موجود
+    for (const forceName in returnedForces) {
+      if (senderForces[forceName]) {
+        senderForces[forceName].quantity += returnedForces[forceName]; // اضافه کردن تعداد برگشتی
+      } else {
+        senderForces[forceName] = { level: 1, quantity: returnedForces[forceName] }; // ایجاد مقدار جدید در صورت نبودن
+      }
+    }
+
+    // بروزرسانی موجودی نیروهای فرستنده
+    await pool.query(
+      'UPDATE user_forces_json SET forces = ? WHERE user_id = ?',
+      [JSON.stringify(senderForces), senderId]
+    );
+
+    // حذف نیرو از `moving_forces`
+    await pool.query(
+      'DELETE FROM moving_forces WHERE id = ?',
+      [id]
+    );
+
+    res.status(200).json({ message: 'Force returned successfully!!', updatedForces: senderForces });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
 module.exports = router;
+
+
+const calculateDistance = (x1, y1, x2, y2) => {
+  return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+};
+
+const checkArrivedForces = async () => {
+  try {
+
+    const [forces] = await pool.query(
+      'SELECT * FROM moving_forces WHERE arrival_time <= NOW()'
+    );
+
+    for (const force of forces) {
+      sendingForce(force.sender_id, force.receiver_id, (force.forces));
+    }
+
+    const [result] = await pool.query(
+      'DELETE FROM moving_forces WHERE arrival_time <= NOW()'
+    );
+
+    if (result.affectedRows > 0) {
+      console.log(`[DEBUG] Removed ${result.affectedRows} arrived forces at ${new Date().toISOString()}`);
+    }
+
+  } catch (error) {
+    console.error("[ERROR] Failed to check moving forces:", error);
+  }
+};
+
+setInterval(checkArrivedForces, 10000);

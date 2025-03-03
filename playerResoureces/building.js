@@ -500,6 +500,16 @@ router.post('/CancelBuildingUpgrade', async (req, res) => {
         }
         const currentLevel = buildingToCancel.level;
 
+        let buildingList;
+        try {
+            buildingList = (buildings);
+        } catch (parseError) {
+            console.error('Error parsing buildings:', parseError);
+            return res.status(500).json({ error: 'Error parsing player buildings' });
+        }
+
+        buildingList = buildingList.filter(building => building.building_id !== buildingID);
+
         // دریافت هزینه‌های آپگرید از جدول buildinglevels برای سطح بعدی
         const [levelData] = await connection.execute(
             'SELECT cost FROM buildinglevels WHERE building_id = ? AND level = ?',
@@ -513,13 +523,11 @@ router.post('/CancelBuildingUpgrade', async (req, res) => {
             ? JSON.parse(levelData[0].cost)
             : levelData[0].cost;
 
-        // محاسبه بازگشت 50 درصد منابع (گرد به پایین)
         const refundResources = {};
         for (const resource in upgradeCost) {
             refundResources[resource] = Math.floor(upgradeCost[resource] * 0.5);
         }
 
-        // دریافت منابع فعلی کاربر
         const [userData] = await connection.execute(
             'SELECT iron, wood, stone, wheat FROM users WHERE playerToken = ?',
             [playerToken]
@@ -529,7 +537,6 @@ router.post('/CancelBuildingUpgrade', async (req, res) => {
         }
         const playerResources = userData[0];
 
-        // محاسبه منابع به‌روز شده با اضافه کردن بازگشت
         const updatedResources = {
             iron: playerResources.iron + (refundResources.iron || 0),
             wood: playerResources.wood + (refundResources.wood || 0),
@@ -539,16 +546,19 @@ router.post('/CancelBuildingUpgrade', async (req, res) => {
 
         await connection.beginTransaction();
 
-        // به‌روز رسانی منابع کاربر (افزودن 50 درصد بازگشتی)
         await connection.execute(
             'UPDATE users SET iron = ?, wood = ?, stone = ?, wheat = ? WHERE playerToken = ?',
             [updatedResources.iron, updatedResources.wood, updatedResources.stone, updatedResources.wheat, playerToken]
         );
 
-        // حذف رکورد آپگرید از جدول buildingUpgrades
         await connection.execute(
             'DELETE FROM buildingUpgrades WHERE playerToken = ? AND buildingID = ?',
             [playerToken, buildingID]
+        );
+
+        await connection.execute(
+            'UPDATE playerbuildings SET buildings = ? WHERE playerToken = ?',
+            [JSON.stringify(buildingList), playerToken]
         );
 
         await connection.commit();

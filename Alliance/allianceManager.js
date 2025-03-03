@@ -46,11 +46,24 @@ router.post('/join', async (req, res) => {
 
 router.post('/leave', async (req, res) => {
 
-    const playerToken = req.body.ID;
+    const {playerToken} = req.body;
 
     try {
         await pool.query('UPDATE users SET clan_id = ?, clan_role = ? WHERE playerToken = ?', [null, null, playerToken]);
         res.status(201).json({ message: 'Player left successfully' });
+
+    } catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.post('/changeRole', async (req, res) => {
+
+    const {playerToken, clanRole} = req.body;
+
+    try {
+        await pool.query('UPDATE users SET clan_role = ? WHERE playerToken = ?', [clanRole, playerToken]);
+        res.status(201).json({ message: 'Player role changed successfully' });
 
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });

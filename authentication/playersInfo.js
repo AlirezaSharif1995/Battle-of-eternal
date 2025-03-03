@@ -227,7 +227,6 @@ router.post('/cancelLevelupForces', async (req, res) => {
     }
 });
 
-
 router.post('/addForce', async (req, res) => {
     const { playerToken, forceName } = req.body;
 
@@ -283,24 +282,42 @@ router.post('/getPlayerForces', async (req, res) => {
     }
 
     try {
-        // دریافت نیروهای بازیکن از جدول `user_forces_json`
-        const [rows] = await pool.query('SELECT forces, upgrading_forces FROM user_forces_json WHERE user_id = ?', [playerToken]);
+        // دریافت نیروهای کاربر
+        const [rows] = await pool.query(
+            'SELECT forces, upgrading_forces FROM user_forces_json WHERE user_id = ?',
+            [playerToken]
+        );
+
         if (rows.length === 0) {
             return res.status(404).json({ message: 'User not found' });
         }
-        const [Username] = await pool.query('SELECT username FROM users WHERE playerToken = ?', [playerToken]);
 
-        const upgradingForces = rows[0].upgrading_forces
-            ? (rows[0].upgrading_forces)
-            : {};
+        // دریافت نام کاربری
+        const [Username] = await pool.query(
+            'SELECT username FROM users WHERE playerToken = ?',
+            [playerToken]
+        );
 
-
-
+        const upgradingForces = rows[0].upgrading_forces ? rows[0].upgrading_forces : {};
         const userForces = rows[0].forces || '{}';
 
-        const [sentForces] = await pool.query('SELECT id, forces, receiverToken FROM guest_forces WHERE senderToken = ?', [Username[0].username]);
+        // دریافت نیروهای ارسال‌شده
+        const [sentForces] = await pool.query(
+            'SELECT id, forces, receiverToken FROM guest_forces WHERE senderToken = ?',
+            [Username[0].username]
+        );
 
-        const [receivedForces] = await pool.query('SELECT id, forces, senderToken FROM guest_forces WHERE receiverToken = ?', [Username[0].username]);
+        // دریافت نیروهای دریافت‌شده
+        const [receivedForces] = await pool.query(
+            'SELECT id, forces, senderToken FROM guest_forces WHERE receiverToken = ?',
+            [Username[0].username]
+        );
+
+        // **✅ اضافه کردن دریافت نیروهای در حال حرکت**
+        const [movingForces] = await pool.query(
+            'SELECT id, sender_id, receiver_id, forces, start_time, arrival_time FROM moving_forces WHERE sender_id = ? OR receiver_id = ?',
+            [playerToken, playerToken]
+        );
 
         const forceNames = Object.keys(userForces);
         if (forceNames.length === 0) {
@@ -308,13 +325,11 @@ router.post('/getPlayerForces', async (req, res) => {
                 message: 'Player has no forces',
                 forces: [],
                 sentForces: [],
-                receivedForces: []
+                receivedForces: [],
+                movingForces: [] // ✅ اضافه شد
             });
         }
 
-
-
-        // دریافت اطلاعات نیروهای بازیکن
         const detailedForces = await Promise.all(
             forceNames.map(async (forceName) => {
                 const level = userForces[forceName]?.level;
@@ -322,44 +337,39 @@ router.post('/getPlayerForces', async (req, res) => {
                 if (!level) return null;
 
                 const [currentLevelDetails] = await pool.query(
-                    `SELECT name, level, attack_power, defense_power, raid_capacity, speed, hp
-                     FROM forces 
-                     WHERE name = ? AND level = ?`,
+                    'SELECT name, level, attack_power, defense_power, raid_capacity, speed, hp FROM forces WHERE name = ? AND level = ?',
                     [forceName, level]
                 );
 
-                // بررسی می‌کنیم که آیا نیرو در حال آپدیت هست یا خیر
                 const isUpgrading = upgradingForces[forceName] ? true : false;
                 let remainingTime = 0;
                 if (isUpgrading) {
-                    // محاسبه زمان باقی‌مانده با استفاده از endTime موجود در upgradingForces
                     const upgradeData = upgradingForces[forceName];
                     remainingTime = Math.max(new Date(upgradeData.endTime) - new Date(), 0);
                 }
                 if (currentLevelDetails.length === 0) return null;
 
                 const [nextLevelDetails] = await pool.query(
-                    `SELECT attack_power, defense_power, raid_capacity, speed, wheat_cost, wood_cost, iron_cost, elixir_cost, upgrade_time
-                     FROM forces
-                     WHERE name = ? AND level = ?`,
+                    'SELECT attack_power, defense_power, raid_capacity, speed, wheat_cost, wood_cost, iron_cost, elixir_cost, upgrade_time FROM forces WHERE name = ? AND level = ?',
                     [forceName, level + 1]
                 );
 
                 const [maxLevelDetails] = await pool.query(
-                    `SELECT attack_power, defense_power, raid_capacity, speed, wheat_cost, wood_cost, iron_cost, elixir_cost, upgrade_time
-                     FROM forces
-                     WHERE name = ? AND level = 20`,
+                    'SELECT attack_power, defense_power, raid_capacity, speed, wheat_cost, wood_cost, iron_cost, elixir_cost, upgrade_time FROM forces WHERE name = ? AND level = 20',
                     [forceName]
                 );
 
-                const [createInfo] = await pool.query('SELECT * FROM updateforces WHERE name = ?', [forceName]);
+                const [createInfo] = await pool.query(
+                    'SELECT * FROM updateforces WHERE name = ?',
+                    [forceName]
+                );
 
                 return {
                     ...currentLevelDetails[0],
                     count,
                     createdAt: userForces[forceName]?.createdAt,
-                    isUpgrading: upgradingForces[forceName] ? true : false, // اینجا بررسی می‌کنیم
-                    remainingTime, // زمان باقی‌مانده یا 0 در صورت عدم آپدیت
+                    isUpgrading,
+                    remainingTime,
                     nextLevelCost: nextLevelDetails.length > 0
                         ? {
                             wheat: nextLevelDetails[0].wheat_cost,
@@ -393,8 +403,8 @@ router.post('/getPlayerForces', async (req, res) => {
                 receiverToken: force.receiverToken,
                 id: force.id,
                 forces: Object.entries(typeof force.forces === 'string' ? JSON.parse(force.forces) : force.forces).map(([key, value]) => ({
-                    name: key, // Add name explicitly
-                    ...value // Spread the existing properties (level, quantity, etc.)
+                    name: key,
+                    ...value
                 }))
             })),
             receivedForces: receivedForces.map(force => ({
@@ -402,11 +412,30 @@ router.post('/getPlayerForces', async (req, res) => {
                 id: force.id,
                 forces: Object.entries(typeof force.forces === 'string' ? JSON.parse(force.forces) : force.forces).map(([key, value]) => ({
                     name: key,
-                    ...value // Spread the existing properties
+                    ...value
                 }))
             })),
-        });
+            movingForces: movingForces.map(force => {
+                const totalTime = new Date(force.arrival_time) - new Date(force.start_time); // کل زمان سفر (میلی‌ثانیه)
+                const remainingTime = Math.max(new Date(force.arrival_time) - new Date(), 0); // زمان باقی‌مانده (میلی‌ثانیه)
 
+                return {
+                    id: force.id,
+                    receiver_id: force.receiver_id,
+                    arrival_time: force.arrival_time,
+                    start_time: force.start_time,
+                    totalTime: Math.floor(totalTime / 1000), // تبدیل به ثانیه
+                    remainingTime: Math.floor(remainingTime / 1000), // تبدیل به ثانیه
+                    forces: Object.entries(typeof force.forces === 'string' ? JSON.parse(force.forces) : force.forces)
+                        .map(([key, value]) => ({
+                            name: key,
+                            count: value // مقدار تعداد نیروها را اضافه کردیم
+                        }))
+
+                };
+            })
+
+        });
 
     } catch (error) {
         console.error('Error fetching player forces:', error);
