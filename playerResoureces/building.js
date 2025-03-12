@@ -556,10 +556,10 @@ router.post('/CancelBuildingUpgrade', async (req, res) => {
             [playerToken, buildingID]
         );
 
-        await connection.execute(
-            'UPDATE playerbuildings SET buildings = ? WHERE playerToken = ?',
-            [JSON.stringify(buildingList), playerToken]
-        );
+        // await connection.execute(
+        //     'UPDATE playerbuildings SET buildings = ? WHERE playerToken = ?',
+        //     [JSON.stringify(buildingList), playerToken]
+        // );
 
         await connection.commit();
         return res.status(200).json({ 

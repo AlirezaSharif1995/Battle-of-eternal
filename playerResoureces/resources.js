@@ -397,7 +397,7 @@ router.post('/backForce', async (req, res) => {
 });
 
 router.post('/TimingAction', async (req, res) => {
-  let { playerToken, receiverToken, forcesToSend } = req.body;
+  let { playerToken, receiverToken, forcesToSend, type } = req.body;
   const senderToken = playerToken;
 
   let formattedForces = {};
@@ -409,17 +409,25 @@ router.post('/TimingAction', async (req, res) => {
   } else {
     formattedForces = forcesToSend; // اگر فرمت درست بود، تغییر نده
   }
-  console.log("Formatted Forces:", formattedForces);
 
   try {
-    // دریافت مختصات شهر فرستنده و گیرنده
+
+    const [attackCount] = await pool.query(
+      'SELECT * FROM moving_forces WHERE sender_id = ?',
+      [senderToken]
+    );
+
+    if(attackCount.length > 2){
+      return res.status(404).json({ error: 'You have more than 3 attack!' });
+    }
+
     const [senderData] = await pool.query(
       'SELECT citypositionX, citypositionY FROM users WHERE playerToken = ?',
       [senderToken]
     );
 
     const [receiverData] = await pool.query(
-      'SELECT citypositionX, citypositionY FROM users WHERE playerToken = ?',
+      'SELECT citypositionX, citypositionY, playerToken FROM users WHERE username = ?',
       [receiverToken]
     );
 
@@ -484,8 +492,8 @@ router.post('/TimingAction', async (req, res) => {
     );
 
     await pool.query(
-      'INSERT INTO moving_forces (sender_id, receiver_id, forces, arrival_time) VALUES (?, ?, ?, ADDTIME(NOW(), SEC_TO_TIME(?)))',
-      [senderToken, receiverToken, JSON.stringify(formattedForces), estimatedTime * 3600]
+      'INSERT INTO moving_forces (sender_id, receiver_id, forces, type, arrival_time) VALUES (?, ?, ?, ?, ADDTIME(NOW(), SEC_TO_TIME(?)))',
+      [senderToken, receiverData[0].playerToken, JSON.stringify(formattedForces), type, estimatedTime * 3600]
     );
 
     res.status(200).json({ distance, minSpeed, estimatedTime });
@@ -566,7 +574,7 @@ const checkArrivedForces = async () => {
   try {
 
     const [forces] = await pool.query(
-      'SELECT * FROM moving_forces WHERE arrival_time <= NOW()'
+      'SELECT * FROM moving_forces WHERE arrival_time <= NOW() AND type = 2'
     );
 
     for (const force of forces) {

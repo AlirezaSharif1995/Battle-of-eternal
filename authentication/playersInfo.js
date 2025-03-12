@@ -730,6 +730,141 @@ router.post('/changeBio', async (req, res) => {
     }
 });
 
+router.post('/payGem', async (req, res) => {
+    try {
+        const { playerToken, type, buildingID } = req.body;
+
+        const [playerRows] = await pool.query(
+            `SELECT gem FROM users WHERE playerToken = ?`,
+            [playerToken]
+        );
+
+        if (playerRows.length === 0) {
+            return res.status(404).json({ message: 'Player not found' });
+        }
+
+        let currentGem = playerRows[0].gem;
+        let requiredGem = 0;
+        let tableName = "";
+        let timeRemaining = 0;
+        let startTime = null;
+
+        if (type === "building") {
+            tableName = "buildingupgrades";
+        } else if (type === "force") {
+            tableName = "forceupgrades";
+        } else {
+            return res.status(400).json({ message: "Invalid type" });
+        }
+
+        const [upgradeRows] = await pool.query(
+            `SELECT startTime, endTime FROM ${tableName} WHERE buildingID = ? AND playerToken = ? AND completed = 0`,
+            [buildingID, playerToken]
+        );
+
+        if (upgradeRows.length === 0) {
+            return res.status(404).json({ message: 'Upgrade not found or already completed' });
+        }
+
+        startTime = new Date(upgradeRows[0].startTime);
+        const endTime = new Date(upgradeRows[0].endTime);
+        const now = new Date();
+
+        timeRemaining = Math.max(0, Math.ceil((endTime - now) / (1000 * 60)));
+
+        requiredGem = Math.ceil(timeRemaining / 5);
+
+        if (currentGem < requiredGem) {
+            return res.status(400).json({ message: "Not enough gems" });
+        }
+
+        await pool.query(
+            `UPDATE users SET gem = gem - ? WHERE playerToken = ?`,
+            [requiredGem, playerToken]
+        );
+
+        await pool.query(
+            `UPDATE ${tableName} SET endTime = startTime WHERE buildingID = ? AND playerToken = ? AND completed = 0`,
+            [buildingID, playerToken]
+        );
+
+        await processBuildingUpgrades();
+
+        res.status(200).json({
+            message: "Upgrade completed instantly",
+            usedGem: requiredGem,
+            remainingGem: currentGem - requiredGem
+        });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.post('/getTopRank', async (req, res) => {
+    try {
+        const { playerToken } = req.body;
+
+        if (!playerToken) {
+            return res.status(400).json({ error: 'Player token is required' });
+        }
+
+        const connection = await pool.getConnection();
+
+        const [topPlayers] = await connection.query(`
+            SELECT 
+                ps.playerToken, 
+                ps.population_consumers, 
+                u.username, 
+                u.avatarCode, 
+                u.clan_id,
+                c.name AS clan_name
+            FROM playerstats ps
+            JOIN users u ON ps.playerToken = u.playerToken
+            LEFT JOIN clans c ON u.clan_id = c.id
+            ORDER BY ps.population_consumers DESC
+            LIMIT 100
+        `);
+
+        const [playerRankResult] = await connection.query(`
+            SELECT COUNT(*) + 1 AS playerRank
+            FROM playerstats
+            WHERE population_consumers > (SELECT population_consumers FROM playerstats WHERE playerToken = ?)
+        `, [playerToken]);
+
+        const playerRank = playerRankResult.length > 0 ? playerRankResult[0].playerRank : null;
+
+        const [topClans] = await connection.query(`
+            SELECT 
+                c.id AS clan_id, 
+                c.name AS clan_name, 
+                c.avatarCode, 
+                SUM(ps.population_consumers) AS total_population,
+                COUNT(u.playerToken) AS total_members
+            FROM users u
+            JOIN playerstats ps ON u.playerToken = ps.playerToken
+            JOIN clans c ON u.clan_id = c.id
+            GROUP BY c.id, c.name, c.avatarCode
+            ORDER BY total_population DESC
+            LIMIT 10
+        `);
+
+        connection.release();
+
+        res.json({
+            topPlayers,
+            playerRank,
+            topClans
+        });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+
 const checkForceCreationCompletion = async () => {
     try {
         // Fetch all force creation requests where the end time has passed
@@ -924,7 +1059,58 @@ async function creditResources(userId, resourcesToCredit) {
     }
 }
 
+const processBuildingUpgrades = async () => {
+    try {
+        const now = new Date();
+        const [upgrades] = await pool.execute(
+            'SELECT * FROM buildingUpgrades WHERE endTime <= ? AND completed = 0',
+            [now]
+        );
 
+        for (const upgrade of upgrades) {
+            const { playerToken, buildingID } = upgrade;
+
+            // دریافت اطلاعات ساختمان‌های بازیکن
+            const [playerData] = await pool.execute(
+                'SELECT buildings FROM playerbuildings WHERE playerToken = ?',
+                [playerToken]
+            );
+
+            if (playerData.length === 0) continue;
+
+            let buildings = playerData[0].buildings;
+            let buildingToUpdate = buildings.find(b => b.building_id === buildingID);
+
+            if (buildingToUpdate) {
+                buildingToUpdate.level += 1; // افزایش سطح ساختمان
+
+                // ذخیره ساختمان‌های به‌روز شده در دیتابیس
+                await pool.execute(
+                    'UPDATE playerbuildings SET buildings = ? WHERE playerToken = ?',
+                    [JSON.stringify(buildings), playerToken]
+                );
+            }
+
+            // دریافت آمار ساختمان جدید و قبلی
+            const [stats] = await pool.execute(
+                'SELECT stats FROM buildinglevels WHERE building_id = ? AND level = ?',
+                [buildingID, buildingToUpdate.level]
+            );
+
+            const [statsBefore] = await pool.execute(
+                'SELECT stats FROM buildinglevels WHERE building_id = ? AND level = ?',
+                [buildingID, buildingToUpdate.level - 1]
+            );
+            // علامت‌گذاری ارتقا به‌عنوان تکمیل شده
+            await pool.execute(
+                'UPDATE buildingUpgrades SET completed = 1 WHERE playerToken = ? AND buildingID = ?',
+                [playerToken, buildingID]
+            );
+        }
+    } catch (error) {
+        console.error("Error in processBuildingUpgrades:", error);
+    }
+};
 
 router.post('/', async (req, res) => {
     const { playerToken } = req.body;
@@ -978,93 +1164,6 @@ router.post('/changeMedals', async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
-
-router.post('/playerBorder', async (req, res) => {
-    const { email, borderX, borderY } = req.body;
-
-    try {
-        const [existingUser] = await pool.query('SELECT * FROM playeremailtable WHERE email = ?', [email]);
-
-        if (existingUser.length > 0) {
-            return res.status(400).json({ error: 'Email is already registered' });
-        }
-
-        const ID = generateRandomToken();
-        await pool.query('INSERT INTO playeremailtable (id, email, borderX, BorderY) VALUES (?, ?, ?, ?)', [ID, email, borderX, borderY]);
-        res.status(201).json({ message: 'Email registerd succesfully!' });
-
-    } catch (error) {
-        res.status(500).json({ error: 'Internal server error' });
-    }
-
-});
-
-router.post('/getPlayerBorder', async (req, res) => {
-    const { email } = req.body;
-
-    try {
-        const [existingUser] = await pool.query('SELECT * FROM playeremailtable WHERE email = ?', [email]);
-
-        if (existingUser.length < 0) {
-            return res.status(400).json({ error: 'User not found!' });
-        }
-
-        const user = {
-            borderX: existingUser[0].borderX,
-            borderY: existingUser[0].borderY,
-            civilization: existingUser[0].civilization,
-            allPopulation: existingUser[0].allPopulation,
-            users: existingUser[0].users
-        }
-        res.status(201).json({ user });
-
-    } catch (error) {
-        console.log(error)
-        res.status(500).json({ error: 'Internal server error' });
-    }
-
-});
-
-router.post('/updatePlayerBorder', async (req, res) => {
-    const { email, type, data } = req.body;
-
-    try {
-        const [existingUser] = await pool.query('SELECT * FROM playeremailtable WHERE email = ?', [email]);
-
-        if (existingUser.length < 0) {
-            return res.status(400).json({ error: 'User not found' });
-        }
-
-        const url = `UPDATE playeremailtable SET ${type} = ? WHERE email = ?`
-        await pool.query(url, [data, email]);
-        res.status(201).json({ message: 'updated succesfully!' });
-
-    } catch (error) {
-        res.status(500).json({ error: 'Internal server error' });
-    }
-
-});
-
-router.post('/getCityPos', async (req, res) => {
-    try {
-        const [rows] = await pool.query(`
-            SELECT 
-                playerToken, 
-                email, 
-                cityName, 
-                cityPositionX, 
-                citypositionY
-            FROM 
-                users
-            `);
-
-        res.status(200).json(rows);
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'Internal server error' });
-    }
-});
-
 
 function generateRandomToken() {
     let token = '';

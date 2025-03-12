@@ -93,6 +93,7 @@ router.post('/clanInfo', async (req, res) => {
         let receivedRequestsIds = [];
 
         if (clan.recivedRequests) {
+
             try {
                 receivedRequestsIds = JSON.parse(clan.recivedRequests);
                 if (!Array.isArray(receivedRequestsIds)) {

@@ -123,7 +123,7 @@ router.post('/getCities', async (req, res) => {
                 avatar: user.avatarCode,
                 cityName: user.cityName,
                 bio: user.bio,
-                population : user.population,
+                population: user.population,
                 citypositionY: user.citypositionY,
                 citypositionX: user.citypositionX
             });
@@ -153,7 +153,6 @@ router.post('/getAllCities', async (req, res) => {
     }
 
 });
-
 
 // HERE
 
