@@ -363,7 +363,6 @@ router.post('/getPlayerForces', async (req, res) => {
                     'SELECT * FROM updateforces WHERE name = ?',
                     [forceName]
                 );
-
                 return {
                     ...currentLevelDetails[0],
                     count,
@@ -439,7 +438,7 @@ router.post('/getPlayerForces', async (req, res) => {
 
     } catch (error) {
         console.error('Error fetching player forces:', error);
-        res.status(500).json({ message: 'Internal server error' });
+        res.status(500).json({ message:error +  'Internal server error' });
     }
 });
 

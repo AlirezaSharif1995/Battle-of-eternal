@@ -53,7 +53,19 @@ router.post('/', async (req, res) => {
             { building_id: 5, level: 1, position: { x: 4, y: 0 } }
         ];
 
-        const forces = "{\"Spy\": {\"level\": 1,\"quantity\": 0},\"Archer\": {\"level\": 1,\"quantity\": 0},\"Balloon\": {\"level\": 1,\"quantity\": 0},\"Infantry\": {\"level\": 1,\"quantity\": 0},\"Maceman\": {\"level\": 1,\"quantity\": 0},\"Swordsman\": {\"level\": 1,\"quantity\": 0},\"Horseman\": {\"level\": 1,\"quantity\": 0},\"Knights\": {\"level\": 1,\"quantity\": 0},\"Battering ram\": {\"level\": 1,\"quantity\": 0},\"Heavy Catapult\": {\"level\": 1,\"quantity\": 0}}";
+        const forces = `{
+            "Spy": {"level": 1, "quantity": 0},
+            "Archer": {"level": 1, "quantity": 0},
+            "Balloon": {"level": 1, "quantity": 0},
+            "Infantry": {"level": 1, "quantity": 0},
+            "Maceman": {"level": 1, "quantity": 0},
+            "Swordsman": {"level": 1, "quantity": 0},
+            "Horseman": {"level": 1, "quantity": 0},
+            "Knights": {"level": 1, "quantity": 0},
+            "Battering ram": {"level": 1, "quantity": 0},
+            "Heavy Catapult": {"level": 1, "quantity": 0},
+            "Specialist": {"level": 1, "quantity": 0}
+        }`;
         const cityPosition = (await generateRandomPosition(pool));
 
         // Insert new user into the database
