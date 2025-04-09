@@ -19,6 +19,14 @@ const updatePlayerResources = require('./playerResoureces/updateResources');
 const app = express();
 app.use(compression());
 app.use(express.json());
+const cors = require('cors');
+
+// Allow all origins (for development purposes, only recommended for dev environments)
+app.use(cors({
+  origin: '*', // یا برای محدود کردن فقط localhost می‌توانید از 'http://localhost:4000' استفاده کنید
+  methods: ['GET', 'POST'], // متدهای مورد تایید
+  allowedHeaders: ['Content-Type', 'Authorization'] // هدرهای مجاز
+}));
 
 app.use('/register', registrationRouter);
 app.use('/login', loginRouter);

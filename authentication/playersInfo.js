@@ -1172,4 +1172,13 @@ function generateRandomToken() {
     return token;
 }
 
+router.get('/getIP', async (req, res) => {
+try {
+    res.status(201).json({ IP: '37.255.218.236' });
+
+} catch (error) {
+
+    res.status(500).json({ error: 'Internal server error' });
+}
+});
 module.exports = router;

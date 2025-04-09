@@ -108,11 +108,6 @@ router.post('/getSpecialists', async (req, res) => {
         
         const specialistCount = userForces['Specialist']?.quantity || 0;
         
-        // If no specialists are found
-        if (specialists.length === 0) {
-            return res.status(200).json({ success: true, message: "No specialists found for this player!" });
-        }
-
         // Return the list of specialists along with their mine coordinates
         return res.status(200).json({ success: true, specialists, specialistCount });
     } catch (error) {
@@ -247,6 +242,7 @@ async function generateRandomPositionForMine(minX, maxX, minY, maxY) {
 setInterval(async () => {
 
     const now = new Date();
+
 
     if (now.getUTCHours() === 0 && now.getUTCMinutes() === 0) {
         console.log("🕛 00:00 UTC - Running daily mine refresh...");

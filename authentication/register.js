@@ -16,7 +16,6 @@ const pool = mysql.createPool({
 
 router.post('/', async (req, res) => {
     const { email, password, username } = req.body;
-
     if (!isValidEmail(email)) {
         return res.status(400).json({ error: 'Invalid email format' });
 
@@ -67,9 +66,10 @@ router.post('/', async (req, res) => {
             "Specialist": {"level": 1, "quantity": 0}
         }`;
         const cityPosition = (await generateRandomPosition(pool));
+        const cityName = username + " City";
 
         // Insert new user into the database
-        await pool.query('INSERT INTO users (playerToken, email, password_hash, username, cityPositionX, cityPositionY) VALUES (?, ?, ?, ?, ?, ?)', [token, email, hashedPassword, username, cityPosition.x, cityPosition.y]);
+        await pool.query('INSERT INTO users (playerToken, email, password_hash, username, cityName, cityPositionX, cityPositionY) VALUES (?, ?, ?, ?, ?, ?, ?)', [token, email, hashedPassword, username, cityName, cityPosition.x, cityPosition.y]);
         await pool.query('INSERT INTO playerbuildings (playerToken, buildings) VALUES (?, ?)', [token, JSON.stringify(defaultBuildings)]);
         await pool.query('INSERT INTO playerstats (playerToken) VALUES (?)', [token]);
         await pool.query('INSERT INTO user_forces_json (user_id, forces) VALUES (?, ?)', [token, forces]);
