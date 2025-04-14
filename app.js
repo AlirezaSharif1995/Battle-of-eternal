@@ -4,6 +4,7 @@ const http = require('http');
 const path = require('path');
 const socket01 = require('./Sockets/socket01');
 const compression = require('compression');
+const serveIndex = require('serve-index');
 
 const { registrationRouter, loginRouter, forgetPassword, playerInfo } = require('./authentication');
 const { building, playerResources, reportHandler, prize } = require('./playerResoureces');
@@ -51,16 +52,14 @@ app.use(express.static(path.join(__dirname, 'Build')));
 app.get('/playGame', (req, res) => {
   res.sendFile(path.join(__dirname, 'Build', 'index.html'));
 });
+const folderPath = path.join(__dirname, 'config2');
 
-app.use(express.static(path.join(__dirname, 'config2')));
-app.get('/config2', (req, res) => {
-  res.sendFile(path.join(__dirname, 'config2', 'index.html'));
-});
+// serve static files
+app.use('/book', express.static(folderPath));
 
-app.use(express.static(path.join(__dirname, 'config2')));
-app.get('/book', (req, res) => {
-  res.sendFile(path.join(__dirname, 'config2', 'Book1.csv'));
-});
+// enable directory listing
+app.use('/book', serveIndex(folderPath, { icons: true }));
+
 
 const INTERVAL_TIME = 60 * 1000;
 updatePlayerResources();
