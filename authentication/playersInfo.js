@@ -39,8 +39,8 @@ router.post('/getPlayerInfo', async (req, res) => {
             cityName: existingUser[0].cityName,
             clan: existingUser[0].clan_id,
             clanRole: existingUser[0].clan_role,
-            gem: existingUser[0].gem
-
+            gem: existingUser[0].gem,
+            recivedRequests: existingUser[0].recivedRequests
         };
 
         res.status(200).json(user);
@@ -315,7 +315,7 @@ router.post('/getPlayerForces', async (req, res) => {
 
         // **✅ اضافه کردن دریافت نیروهای در حال حرکت**
         const [movingForces] = await pool.query(
-            'SELECT id, sender_id, receiver_id, forces, start_time, arrival_time FROM moving_forces WHERE sender_id = ? OR receiver_id = ?',
+            'SELECT id, sender_id, receiver_id, forces, start_time, arrival_time, type FROM moving_forces WHERE sender_id = ? OR receiver_id = ?',
             [playerToken, playerToken]
         );
 
@@ -425,6 +425,7 @@ router.post('/getPlayerForces', async (req, res) => {
                     start_time: force.start_time,
                     totalTime: Math.floor(totalTime / 1000), // تبدیل به ثانیه
                     remainingTime: Math.floor(remainingTime / 1000), // تبدیل به ثانیه
+                    type: force.type,
                     forces: Object.entries(typeof force.forces === 'string' ? JSON.parse(force.forces) : force.forces)
                         .map(([key, value]) => ({
                             name: key,
@@ -709,7 +710,7 @@ router.post('/changeUsername', async (req, res) => {
     }
 
     try {
-        await pool.query('UPDATE users SET username = ? WHERE playerToken = ?', [username, playerToken]);
+        await pool.query('UPDATE users SET username = ?, gem = gem - 1000 WHERE playerToken = ?', [username, playerToken]);
         res.status(200).json({ message: 'Data updated successful' });
 
     } catch (error) {
@@ -872,7 +873,6 @@ const checkForceCreationCompletion = async () => {
         );
 
         if (forceCreationRequests.length === 0) {
-            console.log('No force creation requests to process.');
             return;
         }
 
@@ -931,7 +931,6 @@ cron.schedule('* * * * *', async () => {
         );
 
         if (userRows.length === 0) {
-            console.log('No upgrades in progress.');
             return;
         }
 

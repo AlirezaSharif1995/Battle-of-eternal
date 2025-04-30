@@ -69,7 +69,10 @@ router.post('/', async (req, res) => {
         const cityName = username + " City";
 
         // Insert new user into the database
-        await pool.query('INSERT INTO users (playerToken, email, password_hash, username, cityName, cityPositionX, cityPositionY) VALUES (?, ?, ?, ?, ?, ?, ?)', [token, email, hashedPassword, username, cityName, cityPosition.x, cityPosition.y]);
+        await pool.query(
+            'INSERT INTO users (playerToken, email, password_hash, username, cityName, cityPositionX, cityPositionY, registerTime) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())',
+            [token, email, hashedPassword, username, cityName, cityPosition.x, cityPosition.y]
+        );
         await pool.query('INSERT INTO playerbuildings (playerToken, buildings) VALUES (?, ?)', [token, JSON.stringify(defaultBuildings)]);
         await pool.query('INSERT INTO playerstats (playerToken) VALUES (?)', [token]);
         await pool.query('INSERT INTO user_forces_json (user_id, forces) VALUES (?, ?)', [token, forces]);
@@ -126,18 +129,23 @@ router.post('/getCities', async (req, res) => {
         const [player] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [playerToken]);
         const [users] = await pool.query('SELECT * FROM users WHERE email = ?', [player[0].email]);
 
+
         const validUsers = [];
 
         for (const user of users) {
+            const [statResult] = await pool.query('SELECT population_consumers FROM playerstats WHERE playerToken = ?', [user.playerToken]);
+            const [clan] = await pool.query('SELECT * FROM clans WHERE id = ?', [users[0].clan_id]);
+
             validUsers.push({
                 playerToken: user.playerToken,
                 username: user.username,
                 avatar: user.avatarCode,
                 cityName: user.cityName,
                 bio: user.bio,
-                population: user.population,
+                population: statResult[0]?.population_consumers ?? 0, // مقدار پیش‌فرض در صورت نبود
                 citypositionY: user.citypositionY,
-                citypositionX: user.citypositionX
+                citypositionX: user.citypositionX,
+                alliance: clan[0]?.name ?? "NO ALLIANCE"
             });
         }
 

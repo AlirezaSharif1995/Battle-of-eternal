@@ -412,15 +412,6 @@ router.post('/TimingAction', async (req, res) => {
 
   try {
 
-    const [attackCount] = await pool.query(
-      'SELECT * FROM moving_forces WHERE sender_id = ?',
-      [senderToken]
-    );
-
-    if(attackCount.length > 2){
-      return res.status(404).json({ error: 'You have more than 3 attack!' });
-    }
-
     const [senderData] = await pool.query(
       'SELECT citypositionX, citypositionY FROM users WHERE playerToken = ?',
       [senderToken]
@@ -435,6 +426,46 @@ router.post('/TimingAction', async (req, res) => {
       return res.status(404).json({ error: 'One or both players not found' });
     }
 
+    if (type != 2) {
+
+      const [senderTime] = await pool.query(
+        'SELECT registerTime FROM users WHERE playerToken = ?',
+        [senderToken]
+      );
+
+      const [receiverTime] = await pool.query(
+        'SELECT registerTime FROM users WHERE username = ?',
+        [receiverToken]
+      );
+
+      const senderDate = new Date(senderTime[0].registerTime);
+      const receiverDate = new Date(receiverTime[0].registerTime);
+
+      const now = new Date();
+
+      const senderDays = Math.floor((now - senderDate) / (1000 * 60 * 60 * 24));
+      const receiverDays = Math.floor((now - receiverDate) / (1000 * 60 * 60 * 24));
+      const LIMIT_DAYS = 120;
+
+      if (
+        (senderDays <= LIMIT_DAYS && receiverDays > LIMIT_DAYS) ||
+        (senderDays > LIMIT_DAYS && receiverDays <= LIMIT_DAYS)
+      ) {
+        return res.status(403).json('Players above or below 120 days cannot attack each other.');
+      }
+    }
+
+    const [attackCount] = await pool.query(
+      'SELECT * FROM moving_forces WHERE sender_id = ?',
+      [senderToken]
+    );
+
+    if (attackCount.length > 2) {
+      return res.status(404).json({ error: 'You have more than 3 attack!' });
+    }
+
+
+
     const senderCity = senderData[0];
     const receiverCity = receiverData[0];
 
@@ -443,7 +474,6 @@ router.post('/TimingAction', async (req, res) => {
       receiverCity.citypositionX, receiverCity.citypositionY
     );
 
-    // دریافت اطلاعات نیروهای فرستنده
     const [playerForcesData] = await pool.query(
       'SELECT forces FROM user_forces_json WHERE user_id = ?',
       [senderToken]
@@ -453,7 +483,7 @@ router.post('/TimingAction', async (req, res) => {
       return res.status(400).json({ error: 'Sender has no forces' });
     }
 
-    let senderForces = (playerForcesData[0].forces); // تبدیل JSON به آبجکت
+    let senderForces = (playerForcesData[0].forces);
 
     let minSpeed = Infinity;
 
@@ -462,7 +492,6 @@ router.post('/TimingAction', async (req, res) => {
       if (senderForces[forceName] && senderForces[forceName].quantity >= formattedForces[forceName]) {
         const forceLevel = senderForces[forceName].level;
 
-        // دریافت سرعت نیروی موردنظر از جدول نیروها
         const [forceDetails] = await pool.query(
           'SELECT speed FROM forces WHERE name = ? AND level = ?',
           [forceName, forceLevel]
@@ -562,6 +591,111 @@ router.post('/returnSendingForce', async (req, res) => {
   }
 });
 
+router.post('/warsHistory', async (req, res) => {
+  const { playerToken } = req.body;
+
+  if (!playerToken) {
+    return res.status(400).json({ error: 'playerToken is required' });
+  }
+
+  try {
+    // 1. دریافت همه جنگ‌های مربوط به بازیکن
+    const [wars] = await pool.query(
+      `SELECT 
+        id,
+        attackerPlayerToken,
+        defenderPlayerToken,
+        mode,
+        warStatus,
+        result,
+        defenderForce,
+        attackerForce,
+        createdAt
+      FROM wars
+      WHERE attackerPlayerToken = ? OR defenderPlayerToken = ?
+      ORDER BY createdAt DESC`,
+      [playerToken, playerToken]
+    );
+
+    if (!wars.length) {
+      return res.status(404).json({ message: 'No wars found for this player.' });
+    }
+
+    // 2. استخراج همه توکن‌ها
+    const allTokens = new Set();
+    wars.forEach(war => {
+      allTokens.add(war.attackerPlayerToken);
+      allTokens.add(war.defenderPlayerToken);
+    });
+
+    const tokenList = Array.from(allTokens);
+
+    // 3. گرفتن username و avatarCode برای هر بازیکن فقط یک بار
+    const [users] = await pool.query(
+      'SELECT playerToken, username, avatarCode FROM users WHERE playerToken IN (?)',
+      [tokenList]
+    );
+
+    // 4. ساخت Map برای lookup سریع
+    const userMap = {};
+    for (const user of users) {
+      userMap[user.playerToken] = {
+        username: user.username,
+        avatarCode: user.avatarCode
+      };
+    }
+
+    // 5. ساخت خروجی history
+    const history = wars.map(war => {
+      const result = typeof war.result === 'string' ? JSON.parse(war.result) : war.result;
+      const attackerForce = typeof war.attackerForce === 'string' ? JSON.parse(war.attackerForce) : war.attackerForce;
+      const defenderForce = typeof war.defenderForce === 'string' ? JSON.parse(war.defenderForce) : war.defenderForce;
+
+      const isAttacker = war.attackerPlayerToken === playerToken;
+      const enemyToken = isAttacker ? war.defenderPlayerToken : war.attackerPlayerToken;
+
+      const didWin = (result?.winner === (isAttacker ? 'attacker' : 'defender'));
+
+      return {
+        id: war.id,
+        mode: war.mode,
+        status: war.warStatus,
+        result: didWin ? 'win' : 'lose',
+        raidSummary: result?.raid || null,
+        attackerCasualties: result?.attackerCasualties || {},
+        defenderCasualties: result?.defenderCasualties || {},
+        attackerForce: attackerForce || {},
+        defenderForce: defenderForce || {},
+        createdAt: war.createdAt,
+
+        // ✅ اطلاعات بازیکنان:
+        attacker: {
+          token: war.attackerPlayerToken,
+          username: userMap[war.attackerPlayerToken]?.username || 'Unknown',
+          avatarCode: userMap[war.attackerPlayerToken]?.avatarCode || 'default'
+        },
+        defender: {
+          token: war.defenderPlayerToken,
+          username: userMap[war.defenderPlayerToken]?.username || 'Unknown',
+          avatarCode: userMap[war.defenderPlayerToken]?.avatarCode || 'default'
+        },
+
+        // ✅ همچنین enemy مشخص شده برای خود بازیکن:
+        enemyToken,
+        enemyUsername: userMap[enemyToken]?.username || 'Unknown',
+        enemyAvatar: userMap[enemyToken]?.avatarCode || 'default'
+      };
+    });
+
+    return res.json({ history });
+
+  } catch (err) {
+    console.error('[ERROR] Failed to fetch war history:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
 
 module.exports = router;
 
@@ -571,14 +705,25 @@ const calculateDistance = (x1, y1, x2, y2) => {
 };
 
 const checkArrivedForces = async () => {
-  try {
+  if (checkArrivedForces.isRunning) return;
+  checkArrivedForces.isRunning = true;
 
+  try {
     const [forces] = await pool.query(
-      'SELECT * FROM moving_forces WHERE arrival_time <= NOW() AND type = 2'
+      'SELECT * FROM moving_forces WHERE arrival_time <= NOW()'
     );
 
     for (const force of forces) {
-      sendingForce(force.sender_id, force.receiver_id, (force.forces));
+      const { sender_id, receiver_id, forces: rawForces, type } = force;
+      const parsedForces = typeof rawForces === 'string' ? JSON.parse(rawForces) : rawForces;
+
+      if (type === 0) {
+        await handleBattleStart(sender_id, receiver_id, parsedForces);
+      } else if (type === 2) {
+        await sendingForce(sender_id, receiver_id, parsedForces);
+      } else {
+        console.warn(`[WARN] Unknown type "${type}" for moving force with id: ${force.id}`);
+      }
     }
 
     const [result] = await pool.query(
@@ -591,7 +736,494 @@ const checkArrivedForces = async () => {
 
   } catch (error) {
     console.error("[ERROR] Failed to check moving forces:", error);
+  } finally {
+    checkArrivedForces.isRunning = false;
   }
+};
+
+const handleBattleStart = async (attackerToken, defenderToken, attackerForces) => {
+  try {
+    const attackerStats = await calculateAttackerStats(attackerToken, attackerForces);
+    const defenderStats = await calculateDefenderStats(defenderToken);
+    const attackerFirst = JSON.parse(JSON.stringify(attackerStats));
+    console.log(attackerFirst.detailed)
+
+    console.log(`[COMPARE] ATTACK: ${attackerStats.totalAttackPower} vs DEFENSE: ${defenderStats.totalDefensePower}`);
+
+    const attackerPower = attackerStats.totalAttackPower;
+    const defenderPower = defenderStats.totalDefensePower;
+
+    let winner = attackerPower > defenderPower ? 'attacker' : 'defender';
+
+    const battleOutcome = applyBattleCasualties(winner, attackerStats, defenderStats);
+
+
+    let raid = null;
+
+    if (winner === 'attacker') {
+      const survivingUnits = attackerStats.detailed.filter(unit => (unit.quantitySent ?? unit.quantity) > 0);
+      const raidCapacity = await calculateRaidCapacity(survivingUnits);
+
+      const [[attacker]] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [attackerToken]);
+      const [[defender]] = await pool.query('SELECT * FROM users WHERE playerToken = ?', [defenderToken]);
+      const [[attackerStatsRow]] = await pool.query('SELECT storage_capacity FROM playerstats WHERE playerToken = ?', [attackerToken]);
+
+      const attackerStorageCap = attackerStatsRow?.storage_capacity ?? Infinity;
+
+      raid = distributeRaid(defender, attacker, raidCapacity, attackerStorageCap);
+
+      for (const res in raid) {
+        const amount = raid[res];
+        const defenderBefore = Number(defender[res]) || 0;
+        const attackerBefore = Number(attacker[res]) || 0;
+
+        defender[res] = Math.max(0, defenderBefore - amount);
+        attacker[res] = attackerBefore + amount;
+      }
+
+      await pool.query(
+        'UPDATE users SET wood = ?, stone = ?, iron = ?, wheat = ?, elixir = ? WHERE playerToken = ?',
+        [defender.wood, defender.stone, defender.iron, defender.wheat, defender.elixir, defenderToken]
+      );
+
+      await pool.query(
+        'UPDATE users SET wood = ?, stone = ?, iron = ?, wheat = ?, elixir = ? WHERE playerToken = ?',
+        [attacker.wood, attacker.stone, attacker.iron, attacker.wheat, attacker.elixir, attackerToken]
+      );
+      console.log('[RAID] Attacker looted:', raid);
+
+    }
+
+    const [[userRow]] = await pool.query('SELECT username FROM users WHERE playerToken = ?', [defenderToken]);
+    const defenderUsername = userRow?.username;
+
+    await updateUserForces(attackerToken, battleOutcome.attackerStats.detailed, true);
+    await updateUserForces(defenderToken, battleOutcome.defenderStats.detailed, false);
+
+    const guestCasualties = battleOutcome.defenderStats.detailed.filter(u => u.source === 'guest');
+    await updateGuestForces(defenderUsername, guestCasualties);
+
+    // Prepare war result for saving
+    const warResult = {
+      winner: battleOutcome.winner,
+      attackerCasualties: battleOutcome.attackerCasualties,
+      defenderCasualties: battleOutcome.defenderCasualties,
+      raid: raid || null
+    };
+    console.log(attackerFirst.detailed)
+    // Insert into wars table
+    await pool.query(
+      `INSERT INTO wars 
+      (attackerPlayerToken, defenderPlayerToken, attackerForce, defenderForce, attackerMachine, mode, travelTime, scheduledStartTime, warStatus, result) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        attackerToken,
+        defenderToken,
+        JSON.stringify(attackerFirst.detailed),  // نیروهای حمله کننده
+        JSON.stringify(defenderStats.detailed),  // نیروهای مدافع
+        null,                                    // attackerMachine
+        'battle',                                // mode
+        0,                                       // travelTime
+        new Date(),                              // scheduledStartTime
+        'finished',                              // warStatus
+        JSON.stringify(warResult)                // result
+      ]
+    );
+
+  } catch (err) {
+    console.error('[ERROR] handleBattleStart failed:', err);
+  }
+};
+
+const calculateDefenderStats = async (defenderToken) => {
+  const EXCLUDED_UNITS = ['Spy', 'King', 'Heavy Catapult', 'Battering ram', 'Specialist', 'Balloon'];
+
+  try {
+    // گرفتن username
+    const [[userRow]] = await pool.query(
+      'SELECT username FROM users WHERE playerToken = ?',
+      [defenderToken]
+    );
+
+    if (!userRow) {
+      console.warn(`[WARN] Username not found for defenderToken ${defenderToken}`);
+      return { totalDefensePower: 0, totalHP: 0, detailed: [] };
+    }
+
+    const defenderUsername = userRow.username;
+
+    // گرفتن نیروهای خودش
+    const [[userForcesRow]] = await pool.query(
+      'SELECT forces FROM user_forces_json WHERE user_id = ?',
+      [defenderToken]
+    );
+
+    if (!userForcesRow || !userForcesRow.forces) {
+      console.warn(`[WARN] No forces found for defender ${defenderToken}`);
+      return { totalDefensePower: 0, totalHP: 0, detailed: [] };
+    }
+
+    const fullForces = typeof userForcesRow.forces === 'string'
+      ? JSON.parse(userForcesRow.forces)
+      : userForcesRow.forces;
+
+    let totalDefensePower = 0;
+    let totalHP = 0;
+    let detailed = [];
+
+    // محاسبه نیروهای خود بازیکن
+    for (const forceName in fullForces) {
+      const { level, quantity } = fullForces[forceName];
+      if (quantity <= 0 || EXCLUDED_UNITS.includes(forceName)) continue;
+
+      const [[forceData]] = await pool.query(
+        'SELECT defense_power, hp FROM forces WHERE name = ? AND level = ?',
+        [forceName, level]
+      );
+      if (!forceData) continue;
+
+      const { defense_power, hp } = forceData;
+      const totalForceDefense = defense_power * quantity;
+      const totalForceHP = hp * quantity;
+
+      totalDefensePower += totalForceDefense;
+      totalHP += totalForceHP;
+
+      detailed.push({
+        name: forceName,
+        level,
+        quantity,
+        defense_power,
+        totalForceDefense,
+        hp,
+        totalForceHP,
+        source: 'self'
+      });
+    }
+
+    // گرفتن نیروهای کمکی (guest_forces) با username
+    const [guestRows] = await pool.query(
+      'SELECT forces FROM guest_forces WHERE receiverToken = ?',
+      [defenderUsername]
+    );
+
+    for (const row of guestRows) {
+      const guestForces = typeof row.forces === 'string' ? JSON.parse(row.forces) : row.forces;
+
+      for (const forceName in guestForces) {
+        const { level, quantity } = guestForces[forceName];
+        if (quantity <= 0 || EXCLUDED_UNITS.includes(forceName)) continue;
+
+        const [[forceData]] = await pool.query(
+          'SELECT defense_power, hp FROM forces WHERE name = ? AND level = ?',
+          [forceName, level]
+        );
+        if (!forceData) continue;
+
+        const { defense_power, hp } = forceData;
+        const totalForceDefense = defense_power * quantity;
+        const totalForceHP = hp * quantity;
+
+        totalDefensePower += totalForceDefense;
+        totalHP += totalForceHP;
+
+        detailed.push({
+          name: forceName,
+          level,
+          quantity,
+          defense_power,
+          totalForceDefense,
+          hp,
+          totalForceHP,
+          source: 'guest'
+        });
+      }
+    }
+
+    // لاگ نهایی
+    console.log(`[DEBUG] Defender Forces Breakdown (Defense + HP):`);
+    console.table(detailed);
+    console.log(`[DEBUG] Total Defense Power: ${totalDefensePower}`);
+    console.log(`[DEBUG] Total HP: ${totalHP}`);
+
+    return { totalDefensePower, totalHP, detailed };
+
+  } catch (error) {
+    console.error('[ERROR] Failed to calculate defender stats:', error);
+    return { totalDefensePower: 0, totalHP: 0, detailed: [] };
+  }
+};
+
+const calculateAttackerStats = async (attackerToken, attackerForces) => {
+  const EXCLUDED_UNITS = ['Spy', 'King', 'Heavy Catapult', 'Battering ram', 'Specialist', 'Balloon'];
+
+  try {
+    const [[userForcesRow]] = await pool.query(
+      'SELECT forces FROM user_forces_json WHERE user_id = ?',
+      [attackerToken]
+    );
+
+    if (!userForcesRow || !userForcesRow.forces) {
+      console.warn(`[WARN] No forces found for attacker ${attackerToken}`);
+      return { totalAttackPower: 0, totalHP: 0, detailed: [] };
+    }
+
+    const fullForces = typeof userForcesRow.forces === 'string'
+      ? JSON.parse(userForcesRow.forces)
+      : userForcesRow.forces;
+
+    let totalAttackPower = 0;
+    let totalHP = 0;
+    let detailed = [];
+
+    for (const forceName in attackerForces) {
+      const quantitySent = attackerForces[forceName];
+      const unitInfo = fullForces[forceName];
+
+      if (!unitInfo || quantitySent <= 0) continue;
+      if (EXCLUDED_UNITS.includes(forceName)) continue;
+
+      const level = unitInfo.level;
+
+      const [[forceData]] = await pool.query(
+        'SELECT attack_power, hp FROM forces WHERE name = ? AND level = ?',
+        [forceName, level]
+      );
+
+      if (!forceData) continue;
+
+      const { attack_power, hp } = forceData;
+
+      const totalForceAttack = attack_power * quantitySent;
+      const totalForceHP = hp * quantitySent;
+
+      totalAttackPower += totalForceAttack;
+      totalHP += totalForceHP;
+
+      detailed.push({
+        name: forceName,
+        level,
+        quantitySent,
+        attack_power,
+        totalForceAttack,
+        hp,
+        totalForceHP
+      });
+    }
+
+    console.log(`[DEBUG] Attacker Forces Breakdown (Attack + HP):`);
+    console.table(detailed);
+    console.log(`[DEBUG] Total Attack Power: ${totalAttackPower}`);
+    console.log(`[DEBUG] Total HP: ${totalHP}`);
+
+    return { totalAttackPower, totalHP, detailed };
+
+  } catch (error) {
+    console.error('[ERROR] Failed to calculate attacker stats:', error);
+    return { totalAttackPower: 0, totalHP: 0, detailed: [] };
+  }
+};
+
+const applyBattleCasualties = (winner, attackerStats, defenderStats) => {
+  const attackerCasualties = {};
+  const defenderCasualties = {};
+
+  const attackerPower = attackerStats.totalAttackPower;
+  const defenderPower = defenderStats.totalDefensePower;
+
+  if (winner === 'attacker') {
+    // مهاجم می‌بره → مدافع کاملاً نابود می‌شه
+    defenderStats.detailed.forEach(unit => {
+      defenderCasualties[unit.name] = unit.quantity;
+      unit.quantity = 0;
+    });
+
+    // مهاجم تلفات نسبی می‌ده
+    const totalAttack = attackerStats.detailed.reduce((sum, u) => sum + u.totalForceAttack, 0);
+    attackerStats.detailed.forEach(unit => {
+      const ratio = unit.totalForceAttack / totalAttack;
+      const damage = defenderPower * ratio;
+      const killed = Math.min(unit.quantitySent, Math.round(damage / unit.attack_power));
+      attackerCasualties[unit.name] = killed;
+      unit.quantitySent -= killed;
+    });
+
+  } else {
+    // مدافع می‌بره → فقط نیروهای ارسال‌شده مهاجم باید بمیرن
+    attackerStats.detailed.forEach(unit => {
+      attackerCasualties[unit.name] = unit.quantitySent;
+      unit.quantitySent = 0;
+    });
+
+    // مدافع تلفات نسبی می‌ده
+    const totalDefense = defenderStats.detailed.reduce((sum, u) => sum + u.totalForceDefense, 0);
+    defenderStats.detailed.forEach(unit => {
+      const ratio = unit.totalForceDefense / totalDefense;
+      const damage = attackerPower * ratio;
+      const killed = Math.min(unit.quantity, Math.round(damage / unit.defense_power));
+      defenderCasualties[unit.name] = killed;
+      unit.quantity -= killed;
+    });
+  }
+
+  return {
+    attackerStats,
+    defenderStats,
+    attackerCasualties,
+    defenderCasualties,
+    winner
+  };
+};
+
+const updateUserForces = async (playerToken, updatedForcesArray, isAttacker = false) => {
+  try {
+    const [[userForceRow]] = await pool.query(
+      'SELECT forces FROM user_forces_json WHERE user_id = ?',
+      [playerToken]
+    );
+
+    if (!userForceRow || !userForceRow.forces) {
+      console.warn(`[WARN] No force record found for user ${playerToken}`);
+      return;
+    }
+
+    let forcesObj = typeof userForceRow.forces === 'string'
+      ? JSON.parse(userForceRow.forces)
+      : userForceRow.forces;
+
+    for (const unit of updatedForcesArray) {
+      if (!forcesObj[unit.name]) continue;
+
+      if (isAttacker) {
+        // مهاجم: فقط از تعداد ارسال‌شده کم کن
+        const quantitySent = unit.initialQuantitySent ?? unit.quantitySent;
+        if (quantitySent !== undefined) {
+          forcesObj[unit.name].quantity -= quantitySent;
+          forcesObj[unit.name].quantity = Math.max(0, forcesObj[unit.name].quantity);
+        }
+      } else {
+        // مدافع: مقدار نهایی رو جایگزین کن (چون در شهر بودن)
+        forcesObj[unit.name].quantity = unit.quantity;
+      }
+    }
+
+    await pool.query(
+      'UPDATE user_forces_json SET forces = ? WHERE user_id = ?',
+      [JSON.stringify(forcesObj), playerToken]
+    );
+
+    console.log(`[UPDATE] Forces updated for user ${playerToken}`);
+
+  } catch (error) {
+    console.error('[ERROR] Failed to update user forces:', error);
+  }
+};
+
+const updateGuestForces = async (defenderUsername, damagedGuestUnits) => {
+  try {
+    if (!damagedGuestUnits || damagedGuestUnits.length === 0) return;
+
+    // 1. گرفتن همه نیروهای کمکی برای این مدافع
+    const [guestRows] = await pool.query(
+      'SELECT id, senderToken, forces FROM guest_forces WHERE receiverToken = ?',
+      [defenderUsername]
+    );
+
+    for (const row of guestRows) {
+      let forcesObj = typeof row.forces === 'string' ? JSON.parse(row.forces) : row.forces;
+
+      let updated = false;
+
+      for (const damaged of damagedGuestUnits) {
+        const guestUnit = forcesObj[damaged.name];
+        if (guestUnit && guestUnit.level === damaged.level) {
+          guestUnit.quantity = Math.max(0, guestUnit.quantity - damaged.quantity);
+          updated = true;
+        }
+      }
+
+      if (!updated) continue;
+
+      // حذف نیروهایی که کاملاً صفر شدن
+      for (const name in forcesObj) {
+        if (forcesObj[name].quantity <= 0) {
+          delete forcesObj[name];
+        }
+      }
+
+      if (Object.keys(forcesObj).length === 0) {
+        // همه نیروها صفر شدن → حذف کل ردیف
+        await pool.query(
+          'DELETE FROM guest_forces WHERE id = ?',
+          [row.id]
+        );
+        console.log(`[DELETE] All guest forces wiped for sender ${row.senderToken}, row deleted.`);
+      } else {
+        // بروزرسانی با نیروهای باقی‌مانده
+        await pool.query(
+          'UPDATE guest_forces SET forces = ? WHERE id = ?',
+          [JSON.stringify(forcesObj), row.id]
+        );
+        console.log(`[UPDATE] Guest forces updated for sender ${row.senderToken}`);
+      }
+    }
+
+  } catch (error) {
+    console.error('[ERROR] Failed to update guest forces:', error);
+  }
+};
+
+const calculateRaidCapacity = async (survivingUnits) => {
+  let total = 0;
+  for (const unit of survivingUnits) {
+    const [[row]] = await pool.query(
+      'SELECT raid_capacity FROM forces WHERE name = ? AND level = ?',
+      [unit.name, unit.level]
+    );
+
+    if (row) {
+      total += (row.raid_capacity || 0) * (unit.quantitySent ?? unit.quantity);
+    }
+  }
+  return total;
+};
+
+const distributeRaid = (defender, attacker, totalCapacity, attackerStorageCap) => {
+  const resources = ['wood', 'stone', 'iron', 'wheat', 'elixir'];
+  const loot = {};
+  const perResource = Math.floor(totalCapacity / resources.length);
+
+  for (const res of resources) {
+    const defenderAmount = Number(defender[res]) || 0;
+    const attackerAmount = Number(attacker[res]) || 0;
+
+    const maxLoot = Math.min(
+      defenderAmount,
+      attackerStorageCap - attackerAmount,
+      perResource
+    );
+
+    loot[res] = Math.max(0, maxLoot);
+  }
+
+  // توزیع باقیمانده ظرفیت غارت
+  let used = Object.values(loot).reduce((a, b) => a + b, 0);
+  let remaining = totalCapacity - used;
+
+  for (const res of resources) {
+    if (remaining <= 0) break;
+
+    const extra = Math.min(
+      (Number(defender[res]) || 0) - loot[res],
+      attackerStorageCap - (Number(attacker[res]) || 0) - loot[res]
+    );
+
+    const added = Math.min(remaining, extra);
+    loot[res] += added;
+    remaining -= added;
+  }
+
+  return loot;
 };
 
 setInterval(checkArrivedForces, 10000);

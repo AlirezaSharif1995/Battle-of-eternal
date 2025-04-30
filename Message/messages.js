@@ -37,8 +37,7 @@ router.post('/sendMessageClan', async (req, res) => {
 
     try {
         const time = new Date();
-        const timer = `h: ${time.getHours()}  m: ${time.getMinutes()}  D:${time.getDate()}  M:${time.getMonth() + 1}  Y:${time.getFullYear()}`;
-        await pool.query('INSERT INTO messages (sender ,clan, content, timeRT) VALUES (?, ?, ?, ?)', [sender, clan, JSON.stringify(content), timer]);
+        await pool.query('INSERT INTO messages (sender ,clan, content, timeRT) VALUES (?, ?, ?, ?)', [sender, clan, JSON.stringify(content), time]);
         res.status(201).json({ message: 'Send Message successfully' });
 
     } catch (error) {

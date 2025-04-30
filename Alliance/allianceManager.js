@@ -49,7 +49,7 @@ router.post('/leave', async (req, res) => {
     const {playerToken} = req.body;
 
     try {
-        await pool.query('UPDATE users SET clan_id = ?, clan_role = ? WHERE playerToken = ?', [null, null, playerToken]);
+        await pool.query('UPDATE users SET clan_id = ?, clan_role = ? WHERE playerToken = ?', [0, null, playerToken]);
         res.status(201).json({ message: 'Player left successfully' });
 
     } catch (error) {
@@ -124,7 +124,6 @@ router.post('/clanInfo', async (req, res) => {
 router.post('/sendRequest', async (req, res) => {
     const { playerToken, clan_id } = req.body;
     try {
-
         const [rows] = await pool.query('SELECT * FROM clans WHERE id = ?', [clan_id]);
 
         if (rows.length === 0) {

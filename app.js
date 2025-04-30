@@ -4,7 +4,7 @@ const http = require('http');
 const path = require('path');
 const socket01 = require('./Sockets/socket01');
 const compression = require('compression');
-const serveIndex = require('serve-index');
+//const serveIndex = require('serve-index');
 
 const { registrationRouter, loginRouter, forgetPassword, playerInfo } = require('./authentication');
 const { building, playerResources, reportHandler, prize } = require('./playerResoureces');
@@ -55,10 +55,10 @@ app.get('/playGame', (req, res) => {
 const folderPath = path.join(__dirname, 'config2');
 
 // serve static files
-app.use('/book', express.static(folderPath));
+// app.use('/book', express.static(folderPath));
 
-// enable directory listing
-app.use('/book', serveIndex(folderPath, { icons: true }));
+// // enable directory listing
+// app.use('/book', serveIndex(folderPath, { icons: true }));
 
 
 const INTERVAL_TIME = 60 * 1000;
