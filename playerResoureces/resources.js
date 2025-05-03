@@ -668,7 +668,6 @@ router.post('/warsHistory', async (req, res) => {
         defenderForce: defenderForce || {},
         createdAt: war.createdAt,
 
-        // ✅ اطلاعات بازیکنان:
         attacker: {
           token: war.attackerPlayerToken,
           username: userMap[war.attackerPlayerToken]?.username || 'Unknown',
@@ -680,7 +679,6 @@ router.post('/warsHistory', async (req, res) => {
           avatarCode: userMap[war.defenderPlayerToken]?.avatarCode || 'default'
         },
 
-        // ✅ همچنین enemy مشخص شده برای خود بازیکن:
         enemyToken,
         enemyUsername: userMap[enemyToken]?.username || 'Unknown',
         enemyAvatar: userMap[enemyToken]?.avatarCode || 'default'
@@ -694,7 +692,6 @@ router.post('/warsHistory', async (req, res) => {
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
-
 
 
 module.exports = router;

@@ -439,7 +439,7 @@ router.post('/getPlayerForces', async (req, res) => {
 
     } catch (error) {
         console.error('Error fetching player forces:', error);
-        res.status(500).json({ message:error +  'Internal server error' });
+        res.status(500).json({ message: error + 'Internal server error' });
     }
 });
 
@@ -451,7 +451,7 @@ router.post('/createForces', async (req, res) => {
     }
 
     try {
-        // Fetch player's forces and resources
+        // دریافت منابع و نیروهای بازیکن
         const [playerRows] = await pool.query(
             `SELECT forces FROM user_forces_json WHERE user_id = ?`,
             [playerToken]
@@ -462,19 +462,15 @@ router.post('/createForces', async (req, res) => {
             [playerToken]
         );
 
-        if (playerRows.length === 0) {
+        if (playerRows.length === 0 || playerResource.length === 0) {
             return res.status(404).json({ message: 'Player not found' });
         }
 
-        // Parse player data
-        const playerForces = (playerRows[0].forces || '{}');
-        const playerResources = (playerResource[0] || '{}');
+        const playerResources = playerResource[0];
 
-        // Fetch force details for level 1
+        // دریافت جزئیات نیرو
         const [forceDetails] = await pool.query(
-            `SELECT stone, wood, iron, wheat, production_time
-             FROM updateforces 
-             WHERE name = ?`,
+            `SELECT stone, wood, iron, wheat, production_time FROM updateforces WHERE name = ?`,
             [forceName]
         );
 
@@ -482,23 +478,19 @@ router.post('/createForces', async (req, res) => {
             return res.status(404).json({ message: 'Force not found in database' });
         }
 
-        const newForceDetails = forceDetails[0];
+        const details = forceDetails[0];
 
-        const totalWheatCost = newForceDetails.wheat * forceCount;
-        const totalWoodCost = newForceDetails.wood * forceCount;
-        const totalIronCost = newForceDetails.iron * forceCount;
-        const totalStoneCost = newForceDetails.stone * forceCount;
+        // محاسبه هزینه‌ها و زمان ساخت
+        const totalWheatCost = details.wheat * forceCount;
+        const totalWoodCost = details.wood * forceCount;
+        const totalIronCost = details.iron * forceCount;
+        const totalStoneCost = details.stone * forceCount;
 
-        // Convert production time (hh:mm:ss) to seconds
-        const [hours, minutes, seconds] = newForceDetails.production_time.split(':').map(Number);
-        const productionTimeInSeconds = hours * 3600 + minutes * 60 + seconds;
+        const [h, m, s] = details.production_time.split(':').map(Number);
+        const productionTimePerUnit = h * 3600 + m * 60 + s;
+        const totalProductionTimeInSeconds = productionTimePerUnit * forceCount;
 
-        const totalProductionTimeInSeconds = productionTimeInSeconds * forceCount;
-
-        const totalProductionTime = new Date(Date.now() + totalProductionTimeInSeconds * 1000);
-        const formattedEndTime = toLocalMySQLDatetime(totalProductionTime);
-
-        // Check if player has enough resources
+        // بررسی کافی بودن منابع
         if (
             playerResources.wheat < totalWheatCost ||
             playerResources.wood < totalWoodCost ||
@@ -517,49 +509,90 @@ router.post('/createForces', async (req, res) => {
             });
         }
 
-        // Add force creation request to the `force_creation` table
-        await pool.query(
-            `INSERT INTO forcecreation (player_id, force_type, amount, required_wheat, required_wood, required_iron, required_stone, creation_start_time, creation_end_time, status)
-             VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)`,
-            [
-                playerToken,
-                forceName,
-                forceCount,
-                totalWheatCost,
-                totalWoodCost,
-                totalIronCost,
-                totalStoneCost,
-                formattedEndTime,
-                'in_progress'
-            ]
+        // بررسی وجود ساخت فعال برای همین نیرو
+        const [existingForce] = await pool.query(
+            `SELECT id, amount, creation_end_time FROM forcecreation 
+             WHERE player_id = ? AND force_type = ? AND status = 'in_progress'`,
+            [playerToken, forceName]
         );
 
-        // Deduct the required resources from the user's account
+        if (existingForce.length > 0) {
+            // آپدیت ساخت موجود
+            const current = existingForce[0];
+            const newAmount = current.amount + forceCount;
+            const newEndTime = new Date(new Date(current.creation_end_time).getTime() + totalProductionTimeInSeconds * 1000);
+            const newEndTimeFormatted = toLocalMySQLDatetime(newEndTime);
+
+            await pool.query(
+                `UPDATE forcecreation 
+                 SET amount = ?, 
+                     required_wheat = required_wheat + ?, 
+                     required_wood = required_wood + ?, 
+                     required_iron = required_iron + ?, 
+                     required_stone = required_stone + ?, 
+                     creation_end_time = ?
+                 WHERE id = ?`,
+                [
+                    newAmount,
+                    totalWheatCost,
+                    totalWoodCost,
+                    totalIronCost,
+                    totalStoneCost,
+                    newEndTimeFormatted,
+                    current.id
+                ]
+            );
+        } else {
+            // درج ساخت جدید
+            const endTime = new Date(Date.now() + totalProductionTimeInSeconds * 1000);
+            const formattedEndTime = toLocalMySQLDatetime(endTime);
+
+            await pool.query(
+                `INSERT INTO forcecreation 
+                 (player_id, force_type, amount, required_wheat, required_wood, required_iron, required_stone, creation_start_time, creation_end_time, status)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, 'in_progress')`,
+                [
+                    playerToken,
+                    forceName,
+                    forceCount,
+                    totalWheatCost,
+                    totalWoodCost,
+                    totalIronCost,
+                    totalStoneCost,
+                    formattedEndTime
+                ]
+            );
+        }
+
+        // کم کردن منابع از بازیکن
         await pool.query(
-            `UPDATE users SET wheat = wheat - ?, wood = wood - ?, iron = iron - ?, stone = stone - ? WHERE playerToken = ?`,
+            `UPDATE users 
+             SET wheat = wheat - ?, wood = wood - ?, iron = iron - ?, stone = stone - ? 
+             WHERE playerToken = ?`,
             [totalWheatCost, totalWoodCost, totalIronCost, totalStoneCost, playerToken]
         );
 
         return res.status(200).json({
-            message: 'Force creation request submitted successfully',
-            forceCreation: {
-                playerToken,
-                forceName,
-                forceCount,
-                totalCosts: {
-                    wheat: totalWheatCost,
-                    wood: totalWoodCost,
-                    iron: totalIronCost,
-                    stone: totalStoneCost,
-                },
-                productionEndTime: totalProductionTime,
-            },
+            message: 'Force creation processed successfully',
+            forceType: forceName,
+            amountAdded: forceCount,
+            resourceCost: {
+                wheat: totalWheatCost,
+                wood: totalWoodCost,
+                iron: totalIronCost,
+                stone: totalStoneCost,
+            }
         });
+
     } catch (error) {
-        console.error('Error processing force creation:', error.message, error);
+        console.error('Error in /createForces:', error);
         return res.status(500).json({ message: 'Internal server error' });
     }
 });
+
+function toLocalMySQLDatetime(date) {
+    return date.toISOString().slice(0, 19).replace('T', ' ');
+}
 
 router.post('/getUpdatingForces', async (req, res) => {
 
@@ -864,64 +897,79 @@ router.post('/getTopRank', async (req, res) => {
     }
 });
 
-
 const checkForceCreationCompletion = async () => {
     try {
-        // Fetch all force creation requests where the end time has passed
+        const now = new Date();
+
         const [forceCreationRequests] = await pool.query(
-            `SELECT * FROM forcecreation WHERE creation_end_time <= NOW() AND status = 'in_progress' `
+            `SELECT * FROM forcecreation WHERE status = 'in_progress'`
         );
 
-        if (forceCreationRequests.length === 0) {
-            return;
-        }
-
-        // Process each completed force creation request
         for (let request of forceCreationRequests) {
-            const { player_id, force_type, amount } = request;
+            const { id, player_id, force_type, amount, creation_start_time, creation_end_time } = request;
 
-            try {
-                // Fetch the current forces of the player
-                const [userForcesRows] = await pool.query(
-                    `SELECT forces FROM user_forces_json WHERE user_id = ?`,
-                    [player_id]
-                );
+            const totalDurationSec = (new Date(creation_end_time) - new Date(creation_start_time)) / 1000;
+            const timePerUnit = totalDurationSec / amount;
 
-                let userForces = (userForcesRows[0]?.forces && (userForcesRows[0]?.forces)) || {};
+            const secondsPassed = (now - new Date(creation_start_time)) / 1000;
+            const unitsCompleted = Math.floor(secondsPassed / timePerUnit);
 
-                // Add the newly created forces to the user's forces
-                if (userForces[force_type]) {
-                    // If force type exists, add to quantity (ensure 'quantity' field exists)
-                    userForces[force_type].quantity = (userForces[force_type].quantity || 0) + amount;
-                } else {
-                    // If force type does not exist, initialize with quantity and level
-                    userForces[force_type] = { quantity: amount, level: 1 }; // Assuming level 1 for new forces
-                }
-
-                // Update the user's forces in the database
-                await pool.query(
-                    `UPDATE user_forces_json SET forces = ? WHERE user_id = ?`,
-                    [JSON.stringify(userForces), player_id]
-                );
-
-                await pool.query(
-                    `DELETE FROM forcecreation WHERE id = ?`,
-                    [request.id]
-                );
-
-
-                console.log(`Force creation completed for player ${player_id}: ${amount} ${force_type} forces added.`);
-            } catch (error) {
-                console.error('Error updating forces:', error.message);
+            if (unitsCompleted <= 0) {
+                continue;
             }
 
+            const unitsRemaining = amount - unitsCompleted;
+
+            const [userForcesRows] = await pool.query(
+                `SELECT forces FROM user_forces_json WHERE user_id = ?`,
+                [player_id]
+            );
+
+            let rawForces = userForcesRows[0]?.forces || '{}';
+            let userForces = typeof rawForces === 'string' ? JSON.parse(rawForces) : rawForces;
+
+            if (userForces[force_type]) {
+                userForces[force_type].quantity = (userForces[force_type].quantity || 0) + unitsCompleted;
+            } else {
+                userForces[force_type] = { quantity: unitsCompleted, level: 1 };
+            }
+
+            await pool.query(
+                `UPDATE user_forces_json SET forces = ? WHERE user_id = ?`,
+                [JSON.stringify(userForces), player_id]
+            );
+
+            if (unitsRemaining > 0) {
+                const newStartTime = new Date(new Date(creation_start_time).getTime() + unitsCompleted * timePerUnit * 1000);
+                const newEndTime = new Date(newStartTime.getTime() + unitsRemaining * timePerUnit * 1000);
+
+                await pool.query(
+                    `UPDATE forcecreation 
+                     SET amount = ?, creation_start_time = ?, creation_end_time = ? 
+                     WHERE id = ?`,
+                    [unitsRemaining, toLocalMySQLDatetime(newStartTime), toLocalMySQLDatetime(newEndTime), id]
+                );
+            } else {
+                await pool.query(
+                    `DELETE FROM forcecreation WHERE id = ?`,
+                    [id]
+                );
+            }
+
+            console.log(`Added ${unitsCompleted} '${force_type}' forces to player ${player_id}`);
         }
-    } catch (error) {
-        console.error('Error processing force creation completion:', error.message, error);
+    } catch (err) {
+        console.error('Error in checkForceCreationCompletion:', err.message);
     }
 };
 
+function toLocalMySQLDatetime(date) {
+    return date.toISOString().slice(0, 19).replace('T', ' ');
+}
+
+// اجرا هر 10 ثانیه
 cron.schedule('*/10 * * * * *', checkForceCreationCompletion);
+
 
 cron.schedule('* * * * *', async () => {
     try {
@@ -1172,12 +1220,12 @@ function generateRandomToken() {
 }
 
 router.get('/getIP', async (req, res) => {
-try {
-    res.status(201).json({ IP: '37.255.218.236' });
+    try {
+        res.status(201).json({ IP: '37.255.218.236' });
 
-} catch (error) {
+    } catch (error) {
 
-    res.status(500).json({ error: 'Internal server error' });
-}
+        res.status(500).json({ error: 'Internal server error' });
+    }
 });
 module.exports = router;
