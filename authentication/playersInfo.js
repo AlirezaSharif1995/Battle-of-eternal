@@ -468,7 +468,15 @@ router.post('/createForces', async (req, res) => {
 
         const playerResources = playerResource[0];
 
-        // دریافت جزئیات نیرو
+        // دریافت درصد کاهش زمان ساخت از playerStats
+        const [playerStatsRows] = await pool.query(
+            `SELECT training_time_reduction FROM playerStats WHERE playerToken = ?`,
+            [playerToken]
+        );
+        const reductionPercent = playerStatsRows[0]?.training_time_reduction || 0;
+        const reductionFactor = (100 - reductionPercent) / 100;
+
+        // دریافت اطلاعات نوع نیرو
         const [forceDetails] = await pool.query(
             `SELECT stone, wood, iron, wheat, production_time FROM updateforces WHERE name = ?`,
             [forceName]
@@ -480,17 +488,19 @@ router.post('/createForces', async (req, res) => {
 
         const details = forceDetails[0];
 
-        // محاسبه هزینه‌ها و زمان ساخت
+        // محاسبه هزینه‌ها
         const totalWheatCost = details.wheat * forceCount;
         const totalWoodCost = details.wood * forceCount;
         const totalIronCost = details.iron * forceCount;
         const totalStoneCost = details.stone * forceCount;
 
+        // محاسبه زمان تولید با کاهش
         const [h, m, s] = details.production_time.split(':').map(Number);
-        const productionTimePerUnit = h * 3600 + m * 60 + s;
-        const totalProductionTimeInSeconds = productionTimePerUnit * forceCount;
+        const baseProductionTimePerUnit = h * 3600 + m * 60 + s;
+        const reducedTimePerUnit = baseProductionTimePerUnit * reductionFactor;
+        const totalProductionTimeInSeconds = reducedTimePerUnit * forceCount;
 
-        // بررسی کافی بودن منابع
+        // بررسی منابع کافی
         if (
             playerResources.wheat < totalWheatCost ||
             playerResources.wood < totalWoodCost ||
@@ -509,7 +519,7 @@ router.post('/createForces', async (req, res) => {
             });
         }
 
-        // بررسی وجود ساخت فعال برای همین نیرو
+        // بررسی وجود ساخت فعال
         const [existingForce] = await pool.query(
             `SELECT id, amount, creation_end_time FROM forcecreation 
              WHERE player_id = ? AND force_type = ? AND status = 'in_progress'`,
@@ -517,7 +527,7 @@ router.post('/createForces', async (req, res) => {
         );
 
         if (existingForce.length > 0) {
-            // آپدیت ساخت موجود
+            // ساخت فعال وجود دارد، آن را بروزرسانی کن
             const current = existingForce[0];
             const newAmount = current.amount + forceCount;
             const newEndTime = new Date(new Date(current.creation_end_time).getTime() + totalProductionTimeInSeconds * 1000);
@@ -543,7 +553,7 @@ router.post('/createForces', async (req, res) => {
                 ]
             );
         } else {
-            // درج ساخت جدید
+            // ساخت جدید
             const endTime = new Date(Date.now() + totalProductionTimeInSeconds * 1000);
             const formattedEndTime = toLocalMySQLDatetime(endTime);
 
@@ -564,7 +574,7 @@ router.post('/createForces', async (req, res) => {
             );
         }
 
-        // کم کردن منابع از بازیکن
+        // کسر منابع
         await pool.query(
             `UPDATE users 
              SET wheat = wheat - ?, wood = wood - ?, iron = iron - ?, stone = stone - ? 
@@ -576,6 +586,8 @@ router.post('/createForces', async (req, res) => {
             message: 'Force creation processed successfully',
             forceType: forceName,
             amountAdded: forceCount,
+            timeReductionPercent: reductionPercent,
+            effectiveTimePerUnit: reducedTimePerUnit,
             resourceCost: {
                 wheat: totalWheatCost,
                 wood: totalWoodCost,
@@ -589,6 +601,11 @@ router.post('/createForces', async (req, res) => {
         return res.status(500).json({ message: 'Internal server error' });
     }
 });
+
+function toLocalMySQLDatetime(date) {
+    return date.toISOString().slice(0, 19).replace('T', ' ');
+}
+
 
 function toLocalMySQLDatetime(date) {
     return date.toISOString().slice(0, 19).replace('T', ' ');
