@@ -139,7 +139,7 @@ router.post('/updatePosition', async (req, res) => {
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Internal server error' });
-    } 
+    }
 });
 
 router.post('/RequestaddBuilding', async (req, res) => {
@@ -320,7 +320,7 @@ router.post('/ValidateBuildingUpgrade', async (req, res) => {
         if (!hasEnoughResources) {
             return res.status(400).json({ error: 'Not enough resources to upgrade the building' });
         }
-        await StartBuildingUpgrade(playerToken,buildingID);
+        await StartBuildingUpgrade(playerToken, buildingID);
         // Send validation response with upgrade details
         return res.status(200).json({
             message: 'Validation successful',
@@ -490,27 +490,19 @@ router.post('/CancelBuildingUpgrade', async (req, res) => {
         if (playerData.length === 0) {
             return res.status(404).json({ error: 'Player not found' });
         }
-        // فرض کنید فیلد buildings به صورت JSON ذخیره شده است
+
         const buildings = typeof playerData[0].buildings === 'string'
             ? JSON.parse(playerData[0].buildings)
             : playerData[0].buildings;
+
         const buildingToCancel = buildings.find(b => b.building_id === buildingID);
         if (!buildingToCancel) {
             return res.status(404).json({ error: 'Building not found' });
         }
+
         const currentLevel = buildingToCancel.level;
 
-        let buildingList;
-        try {
-            buildingList = (buildings);
-        } catch (parseError) {
-            console.error('Error parsing buildings:', parseError);
-            return res.status(500).json({ error: 'Error parsing player buildings' });
-        }
-
-        buildingList = buildingList.filter(building => building.building_id !== buildingID);
-
-        // دریافت هزینه‌های آپگرید از جدول buildinglevels برای سطح بعدی
+        // دریافت هزینه آپگرید از جدول buildinglevels برای سطح بعدی
         const [levelData] = await connection.execute(
             'SELECT cost FROM buildinglevels WHERE building_id = ? AND level = ?',
             [buildingID, currentLevel + 1]
@@ -518,7 +510,7 @@ router.post('/CancelBuildingUpgrade', async (req, res) => {
         if (levelData.length === 0) {
             return res.status(404).json({ error: 'Upgrade details not found' });
         }
-        // فرض کنید ستون cost به صورت JSON ذخیره شده است
+
         const upgradeCost = typeof levelData[0].cost === 'string'
             ? JSON.parse(levelData[0].cost)
             : levelData[0].cost;
@@ -535,14 +527,22 @@ router.post('/CancelBuildingUpgrade', async (req, res) => {
         if (userData.length === 0) {
             return res.status(404).json({ error: 'Player resources not found' });
         }
-        const playerResources = userData[0];
 
+        const playerResources = userData[0];
         const updatedResources = {
             iron: playerResources.iron + (refundResources.iron || 0),
             wood: playerResources.wood + (refundResources.wood || 0),
             stone: playerResources.stone + (refundResources.stone || 0),
             wheat: playerResources.wheat + (refundResources.wheat || 0)
         };
+
+        // حذف ساختمان در صورت صفر بودن لول
+        let updatedBuildings;
+        if (currentLevel === 0) {
+            updatedBuildings = buildings.filter(b => b.building_id !== buildingID);
+        } else {
+            updatedBuildings = buildings;
+        }
 
         await connection.beginTransaction();
 
@@ -556,16 +556,19 @@ router.post('/CancelBuildingUpgrade', async (req, res) => {
             [playerToken, buildingID]
         );
 
-        // await connection.execute(
-        //     'UPDATE playerbuildings SET buildings = ? WHERE playerToken = ?',
-        //     [JSON.stringify(buildingList), playerToken]
-        // );
+        await connection.execute(
+            'UPDATE playerbuildings SET buildings = ? WHERE playerToken = ?',
+            [JSON.stringify(updatedBuildings), playerToken]
+        );
 
         await connection.commit();
+
         return res.status(200).json({ 
             message: 'Building upgrade cancelled successfully', 
-            refundedResources: refundResources 
+            refundedResources: refundResources,
+            buildingRemoved: currentLevel === 0
         });
+
     } catch (error) {
         console.error(error);
         if (connection) await connection.rollback();
@@ -574,6 +577,7 @@ router.post('/CancelBuildingUpgrade', async (req, res) => {
         if (connection) connection.release();
     }
 });
+
 
 
 cron.schedule('*/10 * * * * *', async () => {
@@ -609,15 +613,15 @@ cron.schedule('*/10 * * * * *', async () => {
 
             const [stats] = await pool.execute(
                 'SELECT stats FROM buildinglevels WHERE building_id = ? AND level = ?',
-                [buildingID,buildingToUpdate.level]
+                [buildingID, buildingToUpdate.level]
             );
 
             const [statsBefore] = await pool.execute(
                 'SELECT stats FROM buildinglevels WHERE building_id = ? AND level = ?',
-                [buildingID,buildingToUpdate.level]
+                [buildingID, buildingToUpdate.level]
             );
 
-            statUpdate.updatePlayerStats(playerToken,stats[0],statsBefore[0]);
+            statUpdate.updatePlayerStats(playerToken, stats[0], statsBefore[0]);
             // Mark upgrade as completed
             await pool.execute(
                 'UPDATE buildingUpgrades SET completed = 1 WHERE playerToken = ? AND buildingID = ?',
@@ -669,7 +673,7 @@ async function GetUpgradingBuildings(playerToken) {
 }
 
 async function StartBuildingUpgrade(playerToken, buildingID) {
-    
+
     const connection = await pool.getConnection();
     try {
 

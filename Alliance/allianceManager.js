@@ -44,15 +44,72 @@ router.post('/join', async (req, res) => {
     }
 });
 
-router.post('/leave', async (req, res) => {
-
-    const {playerToken} = req.body;
+router.post('/acceptClanInvite', async (req, res) => {
+    const { playerToken, clan_id, clanRole } = req.body;
 
     try {
+        // گرفتن کاربر
+        const [userRows] = await pool.query('SELECT recivedRequests FROM users WHERE playerToken = ?', [playerToken]);
+
+        if (userRows.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        let invites = [];
+        const raw = userRows[0].recivedRequests;
+
+        if (raw) {
+            if (typeof raw === 'string') {
+                try {
+                    invites = JSON.parse(raw);
+                } catch {
+                    invites = raw.split(',').map(id => parseInt(id)).filter(id => !isNaN(id));
+                }
+            } else if (Array.isArray(raw)) {
+                invites = raw;
+            }
+        }
+
+        // بررسی وجود کلن در لیست دعوت‌ها
+        if (!invites.includes(parseInt(clan_id))) {
+            return res.status(400).json({ error: 'Invite not found for this clan' });
+        }
+
+        // حذف دعوت از لیست و ذخیره دوباره
+        const updatedInvites = invites.filter(id => id !== parseInt(clan_id));
+        await pool.query('UPDATE users SET recivedRequests = ?, clan_id = ?, clan_role = ? WHERE playerToken = ?', 
+            [JSON.stringify(updatedInvites), clan_id, clanRole, playerToken]);
+
+        res.status(200).json({ message: 'Joined clan successfully' });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.post('/leave', async (req, res) => {
+    const { playerToken } = req.body;
+
+    try {
+        const [userResult] = await pool.query('SELECT clan_id, clan_role FROM users WHERE playerToken = ?', [playerToken]);
+
+        if (userResult.length === 0) {
+            return res.status(404).json({ error: 'Player not found' });
+        }
+
+        const { clan_id, clan_role } = userResult[0];
+
+        if (clan_role === 'leader') {
+            await pool.query('UPDATE users SET clan_id = ?, clan_role = ? WHERE clan_id = ?', [0, null, clan_id]);
+            return res.status(201).json({ message: 'Clan disbanded and all members removed' });
+        }
+
         await pool.query('UPDATE users SET clan_id = ?, clan_role = ? WHERE playerToken = ?', [0, null, playerToken]);
         res.status(201).json({ message: 'Player left successfully' });
 
     } catch (error) {
+        console.error(error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -73,7 +130,6 @@ router.post('/changeRole', async (req, res) => {
 router.post('/clanInfo', async (req, res) => {
     const { clan_id } = req.body;
     try {
-        // دریافت اطلاعات قبیله
         const [clanResult] = await pool.query('SELECT * FROM clans WHERE id = ?', [clan_id]);
 
         if (clanResult.length === 0) {
@@ -82,13 +138,11 @@ router.post('/clanInfo', async (req, res) => {
 
         let clan = clanResult[0];
 
-        // دریافت اعضای قبیله
         const [members] = await pool.query(
             'SELECT playerToken, avatarCode, username, clan_role AS clanRole FROM users WHERE clan_id = ?', 
             [clan_id]
         );
 
-        // پردازش درخواست‌های دریافتی
         let receivedRequests = [];
         let receivedRequestsIds = [];
 
@@ -148,10 +202,50 @@ router.post('/sendRequest', async (req, res) => {
     }
 });
 
+router.post('/rejectClanRequest', async (req, res) => {
+    const { playerToken, clan_id } = req.body;
+
+    try {
+        const [userResult] = await pool.query('SELECT recivedRequests FROM users WHERE playerToken = ?', [playerToken]);
+
+        if (userResult.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        let requests = [];
+
+        const rawRequests = userResult[0].recivedRequests;
+
+        if (rawRequests) {
+            if (typeof rawRequests === 'string') {
+                try {
+                    requests = JSON.parse(rawRequests);
+                } catch (e) {
+                    requests = rawRequests.split(',').map(id => parseInt(id)).filter(id => !isNaN(id));
+                }
+            } else if (Array.isArray(rawRequests)) {
+                requests = rawRequests;
+            }
+        }
+
+        // حذف آیتم مورد نظر
+        requests = requests.filter(id => id !== parseInt(clan_id));
+
+        // ذخیره دوباره در دیتابیس
+        await pool.query('UPDATE users SET recivedRequests = ? WHERE playerToken = ?', [JSON.stringify(requests), playerToken]);
+
+        res.status(200).json({ message: 'Clan request rejected successfully' });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 router.post('/invitePlayer', async (req, res) => {
     const { username, clan_id } = req.body;
-    try {
 
+    try {
         const [rows] = await pool.query('SELECT * FROM users WHERE username = ?', [username]);
 
         if (rows.length === 0) {
@@ -159,17 +253,32 @@ router.post('/invitePlayer', async (req, res) => {
         }
 
         const player = rows[0];
-        const updatedRequestList = player.recivedRequests ? (player.recivedRequests) : [];
+        let updatedRequestList = [];
 
-        if (!updatedRequestList.includes(clan_id)) {
-            updatedRequestList.push(clan_id);
-        } else {
-            return res.status(400).json({ error: 'clan request already exists in the list' });
+        // اگه چیزی تو لیست هست parse کن و مطمئن شو آیتم‌ها عددن
+        if (player.recivedRequests) {
+            try {
+                updatedRequestList = JSON.parse(player.recivedRequests).map(Number);
+            } catch (e) {
+                updatedRequestList = [];
+            }
         }
 
-        await pool.query('UPDATE users SET recivedRequests = ? WHERE username = ?', [JSON.stringify(updatedRequestList), username]);
+        // بررسی وجود
+        if (!updatedRequestList.includes(parseInt(clan_id))) {
+            updatedRequestList.push(parseInt(clan_id));
+        } else {
+            return res.status(400).json({ error: 'Clan request already exists in the list' });
+        }
+
+        // ذخیره به صورت عددی
+        await pool.query('UPDATE users SET recivedRequests = ? WHERE username = ?', [
+            JSON.stringify(updatedRequestList),
+            username,
+        ]);
 
         res.status(201).json({ message: 'Request sent!' });
+
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Internal server error' });
@@ -290,7 +399,6 @@ router.post('/changeClanName', async (req, res) => {
     const { name, clan_id } = req.body;
 
     try {
-
         await pool.query('UPDATE clans SET name = ? WHERE id = ?', [name, clan_id]);
         res.status(200).json({ message: 'name updated successfully' });
 

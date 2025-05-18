@@ -24,33 +24,73 @@ router.post('/getPlayerInfo', async (req, res) => {
             return res.status(404).json({ error: 'User not found' });
         }
 
+        const userRow = existingUser[0];
+        const statsRow = existingUser2[0];
+
+        // مرحله: پارس کردن recivedRequests
+        let recivedRequestsList = [];
+        let clanIds = [];
+
+        const rawRequests = userRow.recivedRequests;
+
+        if (rawRequests) {
+            if (typeof rawRequests === 'string') {
+                try {
+                    // اگر رشته JSON باشه مثل "[1,2,3]"
+                    const parsed = JSON.parse(rawRequests);
+                    if (Array.isArray(parsed)) {
+                        clanIds = parsed;
+                    } else {
+                        // اگر رشته comma-separated باشه مثل "1,2,3"
+                        clanIds = rawRequests.split(',').map(id => parseInt(id)).filter(id => !isNaN(id));
+                    }
+                } catch (e) {
+                    // اگر JSON نبود، فرض می‌گیریم comma-separated string باشه
+                    clanIds = rawRequests.split(',').map(id => parseInt(id)).filter(id => !isNaN(id));
+                }
+            } else if (Array.isArray(rawRequests)) {
+                // اگر مستقیماً آرایه باشه
+                clanIds = rawRequests;
+            }
+        }
+
+        if (clanIds.length > 0) {
+            const [clanInfoList] = await pool.query(
+                `SELECT id, name, avatarCode FROM clans WHERE id IN (?)`,
+                [clanIds]
+            );
+            recivedRequestsList = clanInfoList.map(clan => ({
+                id: clan.id,
+                name: clan.name,
+                avatarCode: clan.avatarCode
+            }));
+        }
+
+
         const user = {
-            username: existingUser[0].username,
-            avatarCode: existingUser[0].avatarCode,
-            bio: existingUser[0].bio,
-            wheat: existingUser[0].wheat,
-            stone: existingUser[0].stone,
-            wood: existingUser[0].wood,
-            iron: existingUser[0].iron,
-            elixir: existingUser[0].elixir,
-            avatarCode: existingUser[0].avatarCode,
-            civilization: existingUser2[0].civilization_points,
-            population: existingUser2[0].population_consumers,
-            cityName: existingUser[0].cityName,
-            clan: existingUser[0].clan_id,
-            clanRole: existingUser[0].clan_role,
-            gem: existingUser[0].gem,
-            recivedRequests: existingUser[0].recivedRequests
+            username: userRow.username,
+            avatarCode: userRow.avatarCode,
+            bio: userRow.bio,
+            wheat: userRow.wheat,
+            stone: userRow.stone,
+            wood: userRow.wood,
+            iron: userRow.iron,
+            elixir: userRow.elixir,
+            civilization: statsRow.civilization_points,
+            population: statsRow.population_consumers,
+            cityName: userRow.cityName,
+            clan: userRow.clan_id,
+            clanRole: userRow.clan_role,
+            gem: userRow.gem,
+            recivedRequests: recivedRequestsList
         };
 
         res.status(200).json(user);
-
 
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: 'Internal server error' });
     }
-
 });
 
 router.post('/levelupForces', async (req, res) => {
@@ -87,6 +127,10 @@ router.post('/levelupForces', async (req, res) => {
         // Check if the force is already being upgraded
         if (upgradingForces[forceName]) {
             return res.status(400).json({ message: 'Force is already being upgraded' });
+        }
+
+        if (Object.keys(upgradingForces).length > 0) {
+            return res.status(400).json({ message: 'You can only upgrade one unit at a time.' });
         }
 
         const currentLevel = forces[forceName].level || 1; // Default level is 1 if not present
@@ -476,9 +520,8 @@ router.post('/createForces', async (req, res) => {
         const reductionPercent = playerStatsRows[0]?.training_time_reduction || 0;
         const reductionFactor = (100 - reductionPercent) / 100;
 
-        // دریافت اطلاعات نوع نیرو
         const [forceDetails] = await pool.query(
-            `SELECT stone, wood, iron, wheat, production_time FROM updateforces WHERE name = ?`,
+            `SELECT stone, wood, iron, wheat, elixir, production_time FROM updateforces WHERE name = ?`,
             [forceName]
         );
 
@@ -488,19 +531,17 @@ router.post('/createForces', async (req, res) => {
 
         const details = forceDetails[0];
 
-        // محاسبه هزینه‌ها
         const totalWheatCost = details.wheat * forceCount;
         const totalWoodCost = details.wood * forceCount;
         const totalIronCost = details.iron * forceCount;
         const totalStoneCost = details.stone * forceCount;
+        const totalElixirCost = details.elixir * forceCount;
 
-        // محاسبه زمان تولید با کاهش
         const [h, m, s] = details.production_time.split(':').map(Number);
         const baseProductionTimePerUnit = h * 3600 + m * 60 + s;
         const reducedTimePerUnit = baseProductionTimePerUnit * reductionFactor;
         const totalProductionTimeInSeconds = reducedTimePerUnit * forceCount;
 
-        // بررسی منابع کافی
         if (
             playerResources.wheat < totalWheatCost ||
             playerResources.wood < totalWoodCost ||
@@ -514,12 +555,12 @@ router.post('/createForces', async (req, res) => {
                     wood: totalWoodCost,
                     iron: totalIronCost,
                     stone: totalStoneCost,
+                    elixir: totalElixirCost
                 },
                 available: playerResources,
             });
         }
 
-        // بررسی وجود ساخت فعال
         const [existingForce] = await pool.query(
             `SELECT id, amount, creation_end_time FROM forcecreation 
              WHERE player_id = ? AND force_type = ? AND status = 'in_progress'`,
@@ -527,7 +568,7 @@ router.post('/createForces', async (req, res) => {
         );
 
         if (existingForce.length > 0) {
-            // ساخت فعال وجود دارد، آن را بروزرسانی کن
+
             const current = existingForce[0];
             const newAmount = current.amount + forceCount;
             const newEndTime = new Date(new Date(current.creation_end_time).getTime() + totalProductionTimeInSeconds * 1000);
@@ -540,6 +581,7 @@ router.post('/createForces', async (req, res) => {
                      required_wood = required_wood + ?, 
                      required_iron = required_iron + ?, 
                      required_stone = required_stone + ?, 
+                     required_elixir = required_elixir + ?,
                      creation_end_time = ?
                  WHERE id = ?`,
                 [
@@ -548,6 +590,7 @@ router.post('/createForces', async (req, res) => {
                     totalWoodCost,
                     totalIronCost,
                     totalStoneCost,
+                    totalElixirCost,
                     newEndTimeFormatted,
                     current.id
                 ]
@@ -559,8 +602,8 @@ router.post('/createForces', async (req, res) => {
 
             await pool.query(
                 `INSERT INTO forcecreation 
-                 (player_id, force_type, amount, required_wheat, required_wood, required_iron, required_stone, creation_start_time, creation_end_time, status)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, 'in_progress')`,
+                 (player_id, force_type, amount, required_wheat, required_wood, required_iron, required_stone, required_elixir, creation_start_time, creation_end_time, status)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, 'in_progress')`,
                 [
                     playerToken,
                     forceName,
@@ -569,6 +612,7 @@ router.post('/createForces', async (req, res) => {
                     totalWoodCost,
                     totalIronCost,
                     totalStoneCost,
+                    totalElixirCost,
                     formattedEndTime
                 ]
             );
@@ -605,7 +649,6 @@ router.post('/createForces', async (req, res) => {
 function toLocalMySQLDatetime(date) {
     return date.toISOString().slice(0, 19).replace('T', ' ');
 }
-
 
 function toLocalMySQLDatetime(date) {
     return date.toISOString().slice(0, 19).replace('T', ' ');
@@ -680,7 +723,7 @@ router.post('/getCreatingForces', async (req, res) => {
 
 router.post('/cancelForceCreation', async (req, res) => {
     const { playerToken, createID } = req.body;
-    console.log(req.body)
+
     if (!playerToken || !createID) {
         return res.status(400).json({ message: 'Invalid request data' });
     }
@@ -703,6 +746,7 @@ router.post('/cancelForceCreation', async (req, res) => {
         const refundWood = Math.floor(forceEntry.required_wood * 0.5);
         const refundIron = Math.floor(forceEntry.required_iron * 0.5);
         const refundStone = Math.floor(forceEntry.required_stone * 0.5);
+        const refundElixir = Math.floor(forceEntry.required_elixir * 0.5);
 
         // Refund resources to the player
         await pool.query(
@@ -710,9 +754,10 @@ router.post('/cancelForceCreation', async (req, res) => {
                 wheat = wheat + ?, 
                 wood = wood + ?, 
                 iron = iron + ?, 
-                stone = stone + ? 
+                stone = stone + ?,
+                elixir = elixir + ? 
              WHERE playerToken = ?`,
-            [refundWheat, refundWood, refundIron, refundStone, playerToken]
+            [refundWheat, refundWood, refundIron, refundStone, refundElixir, playerToken]
         );
 
         // Delete the force creation entry

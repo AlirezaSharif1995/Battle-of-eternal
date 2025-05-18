@@ -63,10 +63,11 @@ router.post('/', async (req, res) => {
             "Knights": {"level": 1, "quantity": 0},
             "Battering ram": {"level": 1, "quantity": 0},
             "Heavy Catapult": {"level": 1, "quantity": 0},
-            "Specialist": {"level": 1, "quantity": 0}
+            "Specialist": {"level": 1, "quantity": 0},
+            "Counsellor": {"level": 1, "quantity": 0}
         }`;
         const cityPosition = (await generateRandomPosition(pool));
-        const cityName = username + " City";
+        const cityName = username;
 
         // Insert new user into the database
         await pool.query(
