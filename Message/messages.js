@@ -13,24 +13,58 @@ const pool = mysql.createPool({
 });
 
 router.post('/sendMessage', async (req, res) => {
-    const { sender, receiver, message } = req.body;
+    const { sender, receiver, message, isSendToAll } = req.body;
 
     try {
-        const [userResult] = await pool.query('SELECT playerToken FROM users WHERE username = ?', [receiver]);
-        if (userResult.length <= 0) {
-            return res.status(400).json({ message: 'User not found!' });
-        }
-
         const time = new Date();
-        await pool.query('INSERT INTO messages (sender ,receiver, content, timeRT) VALUES (?, ?, ?, ?)', [sender, userResult[0].playerToken, message, time]);
-        res.status(201).json({ message: 'Send Message successfully' });
 
+        if (isSendToAll) {
+
+            const [senderResult] = await pool.query('SELECT clan_id FROM users WHERE playerToken = ?', [sender]);
+            if (senderResult.length === 0 || !senderResult[0].clan_id) {
+                return res.status(400).json({ message: 'Clan not found for sender!' });
+            }
+
+            const clanId = senderResult[0].clan_id;
+
+            const [clanMembers] = await pool.query(
+                'SELECT playerToken FROM users WHERE clan_id = ? AND playerToken != ?',
+                [clanId, sender]
+            );
+
+            if (clanMembers.length === 0) {
+                return res.status(400).json({ message: 'No other members found in clan!' });
+            }
+
+            // ایجاد پیام برای هر عضو
+            const messageValues = clanMembers.map(member => [sender, member.playerToken, message, time]);
+
+            await pool.query(
+                'INSERT INTO messages (sender, receiver, content, timeRT) VALUES ?',
+                [messageValues]
+            );
+
+            return res.status(201).json({ message: 'Message sent to all clan members.' });
+        } else {
+            const [userResult] = await pool.query('SELECT playerToken FROM users WHERE username = ?', [receiver]);
+
+            if (userResult.length === 0) {
+                return res.status(400).json({ message: 'User not found!' });
+            }
+
+            await pool.query(
+                'INSERT INTO messages (sender, receiver, content, timeRT) VALUES (?, ?, ?, ?)',
+                [sender, userResult[0].playerToken, message, time]
+            );
+
+            return res.status(201).json({ message: 'Message sent successfully.' });
+        }
     } catch (error) {
         console.error('Error sendMessage:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
-
 });
+
 
 router.post('/sendMessageClan', async (req, res) => {
     const { sender, clan, content } = req.body;
@@ -151,16 +185,51 @@ router.post('/getClanMessages', async (req, res) => {
 });
 
 router.post('/deleteMessage', async (req, res) => {
-    const { id } = req.body;
+    const { sender, receiver } = req.body;
+
+    if (!sender || receiver === undefined) {
+        return res.status(400).json({ error: 'Sender and receiver are required.' });
+    }
 
     try {
-        await pool.query('DELETE FROM messages WHERE id = ?', [id]);
-        res.status(200).json({ message: `Message with id: ${id} deleted successfully` });
+        if (parseInt(receiver) === 0) {
+            // حذف تمام پیام‌هایی که sender یا receiver این کاربر هستند
+            await pool.query(
+                `DELETE FROM messages 
+                 WHERE sender = ? OR receiver = ?`,
+                [sender, sender]
+            );
+
+            return res.status(200).json({ message: `All messages for user ${sender} deleted.` });
+        }
+
+        // گرفتن توکن گیرنده با استفاده از username
+        const [userResult] = await pool.query(
+            'SELECT playerToken FROM users WHERE username = ?',
+            [receiver]
+        );
+
+        if (userResult.length === 0) {
+            return res.status(404).json({ error: 'Receiver user not found.' });
+        }
+
+        const receiverToken = userResult[0].playerToken;
+
+        // حذف همه پیام‌های بین sender و receiver
+        await pool.query(
+            `DELETE FROM messages 
+             WHERE (sender = ? AND receiver = ?) 
+                OR (sender = ? AND receiver = ?)`,
+            [sender, receiverToken, receiverToken, sender]
+        );
+
+        res.status(200).json({ message: `All messages between sender ${sender} and receiver ${receiver} deleted.` });
     } catch (error) {
-        console.error('Error deleting message:', error);
+        console.error('Error deleting messages:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
+
 
 router.post('/readMessage', async (req, res) => {
     const { id } = req.body;

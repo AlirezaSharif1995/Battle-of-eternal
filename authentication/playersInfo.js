@@ -2,6 +2,7 @@ const express = require('express');
 const cron = require('node-cron');
 const router = express.Router();
 const mysql = require('mysql2/promise');
+const statUpdate = require('../playerResoureces/ChangeStats');
 
 const pool = mysql.createPool({
     host: 'localhost',
@@ -359,9 +360,10 @@ router.post('/getPlayerForces', async (req, res) => {
 
         // **✅ اضافه کردن دریافت نیروهای در حال حرکت**
         const [movingForces] = await pool.query(
-            'SELECT id, sender_id, receiver_id, forces, start_time, arrival_time, type FROM moving_forces WHERE sender_id = ? OR receiver_id = ?',
+            'SELECT id, sender_id, receiver_id, forces, start_time, arrival_time, type FROM moving_forces WHERE sender_id = ? OR receiver_id = ? ORDER BY arrival_time ASC',
             [playerToken, playerToken]
         );
+        
 
         const forceNames = Object.keys(userForces);
         if (forceNames.length === 0) {
@@ -1209,7 +1211,9 @@ const processBuildingUpgrades = async () => {
                 'SELECT stats FROM buildinglevels WHERE building_id = ? AND level = ?',
                 [buildingID, buildingToUpdate.level - 1]
             );
-            // علامت‌گذاری ارتقا به‌عنوان تکمیل شده
+
+            statUpdate.updatePlayerStats(playerToken, stats[0], statsBefore[0]);
+
             await pool.execute(
                 'UPDATE buildingUpgrades SET completed = 1 WHERE playerToken = ? AND buildingID = ?',
                 [playerToken, buildingID]
@@ -1290,4 +1294,5 @@ router.get('/getIP', async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
+
 module.exports = router;

@@ -80,7 +80,6 @@ router.post('/sendSpecialist', async (req, res) => {
     }
 });
 
-
 router.post('/getSpecialists', async (req, res) => {
     try {
         const { playerToken } = req.body;
@@ -173,9 +172,6 @@ router.post('/returnSpecialists', async (req, res) => {
     }
 });
 
-
-
-
 router.post('/mines', async (req, res) => {
     try {
         const [rows] = await pool.query(`
@@ -238,11 +234,9 @@ async function generateRandomPositionForMine(minX, maxX, minY, maxY) {
     }
 }
 
-
 setInterval(async () => {
 
     const now = new Date();
-
 
     if (now.getUTCHours() === 0 && now.getUTCMinutes() === 0) {
         console.log("🕛 00:00 UTC - Running daily mine refresh...");
@@ -256,7 +250,6 @@ setInterval(async () => {
         console.log("🏗️  New mines generated");
     }
 }, 60000);
-
 
 async function processExtractions() {
     const specialists = await pool.query("SELECT * FROM specialists");
@@ -294,6 +287,5 @@ async function processExtractions() {
 }
 
 setInterval(processExtractions, 60000);
-
 
 module.exports = router;

@@ -460,11 +460,20 @@ router.post('/TimingAction', async (req, res) => {
       [senderToken]
     );
 
-    if (attackCount.length > 2) {
-      return res.status(404).json({ error: 'You have more than 3 attack!' });
+    const [playerStats] = await pool.query(
+      'SELECT attack_limit FROM playerstats WHERE playerToken = ?',
+      [senderToken]
+    );
+
+    if (playerStats.length === 0) {
+      return res.status(404).json({ error: 'Player stats not found!' });
     }
 
+    const attackLimit = playerStats[0].attack_limit;
 
+    if (attackCount.length >= attackLimit) {
+      return res.status(403).json({ error: `Attack limit reached! (${attackLimit} max)` });
+    }
 
     const senderCity = senderData[0];
     const receiverCity = receiverData[0];

@@ -165,7 +165,7 @@ router.post('/getAllCities', async (req, res) => {
 
     try {
 
-        const [cities] = await pool.query('SELECT citypositionY, citypositionX, cityName, playerToken FROM users');
+        const [cities] = await pool.query('SELECT citypositionY, citypositionX, cityName, playerToken, username FROM users');
         res.status(201).json({ message: 'cities list', cities });
 
     } catch (error) {
